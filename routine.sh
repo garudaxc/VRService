@@ -1,6 +1,8 @@
 #!/bin/sh
 
-AndroidPath=~/work2/android-4.0.4_r1
+#AndroidPath=~/work2/android-4.0.4_r1
+AndroidPath=$1
+appPath=MyApplication/app/src/main
 
 if [ -z $1 ]
 then
@@ -13,15 +15,20 @@ then
 fi
 
 
-if [ $1=="-cf" ]
+if [ $2=="-cf" ]
 then
-	cp $AndroidPath/development/samples/SimpleJNI/jni/native.cpp ./jni/
-	cp $AndroidPath/development/samples/SimpleJNI/jni/Android.mk ./jni/
-	cp $AndroidPath/frameworks/base/services/surfaceflinger/SurfaceFlinger.h ./jni/
-	cp $AndroidPath/frameworks/base/services/surfaceflinger/SurfaceFlinger.cpp ./jni/
-	cp $AndroidPath/frameworks/base/include/surfaceflinger/ISurfaceComposer.h ./jni/
-	cp $AndroidPath/frameworks/base/libs/gui/ISurfaceComposer.cpp ./jni/
+	cp $AndroidPath/development/samples/SimpleJNI/jni/native.cpp $appPath/jni/
+	cp $AndroidPath/development/samples/SimpleJNI/jni/Android.mk $appPath/jni/
+	cp $AndroidPath/frameworks/base/services/surfaceflinger/SurfaceFlinger.h $appPath/jni/
+	cp $AndroidPath/frameworks/base/services/surfaceflinger/SurfaceFlinger.cpp $appPath/jni/
+	cp $AndroidPath/frameworks/base/include/surfaceflinger/ISurfaceComposer.h $appPath/jni/
+	cp $AndroidPath/frameworks/base/libs/gui/ISurfaceComposer.cpp $appPath/jni/
 	echo copy from $AndroidPath to workspace
 fi	
 
+if [ $2=="-build" ]
+then
+	m development/samples/SimpleJNI/jni
+	cp out/target/product/generic/system/libsimplejni.so $appPath/jniLib
+fi
 
