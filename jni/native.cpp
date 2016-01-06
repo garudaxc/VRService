@@ -33,6 +33,20 @@
 using namespace android;
 EGLDisplay display = NULL;
 EGLSurface surface = NULL;
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+JNIEXPORT uint64_t JNICALL GetTicksNanos();
+JNIIMPORT uint32_t JNICALL GetTicksMS();
+
+#ifdef __cplusplus
+}
+#endif
+
+
 uint64_t GetTicksNanos()
 {
     // Do NOT change because this should be the same as Java's system.nanoTime(),
@@ -135,10 +149,10 @@ static void init(JNIEnv *env, jobject thiz, jint width, jint height)
         LOGI("Unable to eglMakeCurrent");
     }
 
-    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
+    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    //LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
 
-    surfaceComposer->disableRenderThread();
+    //surfaceComposer->disableRenderThread();
 
 }
 
@@ -194,7 +208,7 @@ static int registerNatives(JNIEnv* env)
 
 /*
 * This is called by the VM when the shared library is first loaded.
-*/
+
 
 typedef union {
     JNIEnv* env;
@@ -226,3 +240,4 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
     bail:
     return result;
 }
+ */
