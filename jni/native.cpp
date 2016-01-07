@@ -39,8 +39,8 @@ EGLSurface surface = NULL;
 extern "C" {
 #endif
 
-JNIEXPORT uint64_t JNICALL GetTicksNanos();
-JNIIMPORT uint32_t JNICALL GetTicksMS();
+JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz);
+JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height);
 
 #ifdef __cplusplus
 }
@@ -68,27 +68,16 @@ uint32_t GetTicksMS()
 }
 
 
-static void TestDraw()
+
+void step(JNIEnv *env, jobject thiz)
 {
+    LOGI("step");
+    return;
+
     glClearColor(1, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
     eglSwapBuffers(display, surface);
-}
-
-
-
-static jint
-add(JNIEnv *env, jobject thiz, jint a, jint b) {
-    int result = a + b + 55;
-    LOGI("%d + %d = %d", a, b, result);
-
-    return result;
-}
-
-static void step(JNIEnv *env, jobject thiz)
-{
-    TestDraw();
 
     static uint32_t lastTime = GetTicksMS();
     static uint32_t numFrames = 0;
@@ -104,8 +93,10 @@ static void step(JNIEnv *env, jobject thiz)
     }
 }
 
-static void init(JNIEnv *env, jobject thiz, jint width, jint height)
+void init(JNIEnv *env, jobject thiz, jint width, jint height)
 {
+    LOGI("init %d %d", width, height);
+    return;
 
     EGLNativeWindowType window = android_createDisplaySurface();
     LOGI("EGLNativeWindowType %p", window);
@@ -149,6 +140,7 @@ static void init(JNIEnv *env, jobject thiz, jint width, jint height)
         LOGI("Unable to eglMakeCurrent");
     }
 
+
     //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
     //LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
 
@@ -162,7 +154,6 @@ static const char *classPathName = "com/example/garuda/myapplication2/Native";
 
 
 static JNINativeMethod methods[] = {
-        {"add", "(II)I", (void*)add },
         {"step", "()V", (void*)step },
         {"init", "(II)V", (void*)init },
 };
