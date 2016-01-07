@@ -41,7 +41,7 @@ extern "C" {
 
 JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz);
 JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height);
-
+JNIEXPORT void JNICALL __pause();
 #ifdef __cplusplus
 }
 #endif
@@ -71,8 +71,7 @@ uint32_t GetTicksMS()
 
 void step(JNIEnv *env, jobject thiz)
 {
-    LOGI("step");
-    return;
+    //LOGI("step");
 
     glClearColor(1, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -96,7 +95,6 @@ void step(JNIEnv *env, jobject thiz)
 void init(JNIEnv *env, jobject thiz, jint width, jint height)
 {
     LOGI("init %d %d", width, height);
-    return;
 
     EGLNativeWindowType window = android_createDisplaySurface();
     LOGI("EGLNativeWindowType %p", window);
@@ -141,11 +139,17 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     }
 
 
-    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    //LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
+    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
 
-    //surfaceComposer->disableRenderThread();
+    surfaceComposer->setEnable(false);
 
+}
+
+void __pause()
+{
+    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    surfaceComposer->setEnable(true);
 }
 
 //static const char *classPathName = "com/example/android/simplejni/Native";

@@ -40,7 +40,8 @@ extern "C" {
 #endif
 	
 	typedef	JNIEXPORT void JNICALL (*Fun_step)(JNIEnv *env, jobject thiz);
-	typedef	JNIEXPORT void JNICALL (*Fun_init)(JNIEnv *env, jobject thiz, jint width, jint height);
+	typedef	JNIEXPORT void JNICALL(*Fun_init)(JNIEnv *env, jobject thiz, jint width, jint height);
+	typedef	JNIEXPORT void JNICALL(*Fun_pause)();
 
 
 #ifdef __cplusplus
@@ -49,7 +50,7 @@ extern "C" {
 
 Fun_step step = NULL;
 Fun_init init = NULL;
-
+Fun_pause __pause = NULL;
 
 struct saved_state {
     float angle;
@@ -107,8 +108,7 @@ void InitLibFunction()
 
 		step = GetFunctionPtr<Fun_step>(handle, "step");
 		init = GetFunctionPtr<Fun_init>(handle, "init");
-		step(NULL, dumm);
-		init(NULL, dumm, 10, 24);		
+		__pause = GetFunctionPtr<Fun_pause>(handle, "__pause");
 
 		//dlclose(handle);
 	}
@@ -119,6 +119,10 @@ void InitLibFunction()
 static int engine_init_display(struct engine* engine) {
 
 	InitLibFunction();
+
+	jobject dumm;
+	init(NULL, dumm, 0, 0);
+	return 0;
 
     // initialize OpenGL ES and EGL
 
@@ -188,10 +192,15 @@ static int engine_init_display(struct engine* engine) {
  * Just the current frame in the display.
  */
 static void engine_draw_frame(struct engine* engine) {
+	jobject dumm;
+	step(NULL, dumm);
+	return;
+
     if (engine->display == NULL) {
         // No display.
         return;
     }
+
 
     // Just fill the screen with a color.
     glClearColor(((float)engine->state.x)/engine->width, engine->state.angle,
@@ -219,6 +228,7 @@ static void engine_term_display(struct engine* engine) {
     engine->display = EGL_NO_DISPLAY;
     engine->context = EGL_NO_CONTEXT;
     engine->surface = EGL_NO_SURFACE;
+	__pause();
 }
 
 /**
