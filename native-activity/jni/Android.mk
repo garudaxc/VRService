@@ -24,9 +24,9 @@ include $(PREBUILT_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-activity
-LOCAL_SRC_FILES := main.c libsimplejni.so
-LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv1_CM
-//LOCAL_SHARED_LIBRARIES := simplejni
+LOCAL_SRC_FILES := main.cpp
+LOCAL_LDLIBS    := -llog -landroid -lEGL -lGLESv1_CM -ldl
+#LOCAL_SHARED_LIBRARIES := simplejni
 LOCAL_STATIC_LIBRARIES := android_native_app_glue
 
 include $(BUILD_SHARED_LIBRARY)

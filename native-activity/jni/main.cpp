@@ -18,6 +18,7 @@
 //BEGIN_INCLUDE(all)
 #include <jni.h>
 #include <errno.h>
+#include <dlfcn.h>
 
 #include <EGL/egl.h>
 #include <GLES/gl.h>
@@ -33,21 +34,22 @@
  * Our saved state data.
  */
 
-void TestFun()
-{
-
-}
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+	
+	typedef	JNIEXPORT void JNICALL (*Fun_step)(JNIEnv *env, jobject thiz);
+	typedef	JNIEXPORT void JNICALL (*Fun_init)(JNIEnv *env, jobject thiz, jint width, jint height);
 
-	JNIEXPORT uint64_t JNICALL GetTicksNanos();
-	JNIIMPORT uint32_t JNICALL GetTicksMS();
 
 #ifdef __cplusplus
 }
 #endif
+
+Fun_step step = NULL;
+Fun_init init = NULL;
+
 
 struct saved_state {
     float angle;
@@ -77,7 +79,47 @@ struct engine {
 /**
  * Initialize an EGL context for the current display.
  */
+
+
+template<class T>
+T GetFunctionPtr(void* handle, const char* funtionName)
+{
+	void* funPtr = NULL;
+	funPtr = dlsym(handle, funtionName);
+	LOGI("function ptr %s %p",funtionName, funPtr);
+	if (funPtr == NULL)
+	{
+		LOGW("can not find funtion ptr %s", funtionName);
+	}
+
+	return (T)funPtr;
+}
+
+void InitLibFunction()
+{
+	void* handle = dlopen("/data/data/com.example.native_activity/lib/libsimplejni.so", RTLD_NOW | RTLD_LOCAL);
+	if (handle == NULL)	{
+		LOGW("dlopen failed!");
+	} else {
+		LOGI("dlopen succeeded!");
+
+		jobject dumm;
+
+		step = GetFunctionPtr<Fun_step>(handle, "step");
+		init = GetFunctionPtr<Fun_init>(handle, "init");
+		step(NULL, dumm);
+		init(NULL, dumm, 10, 24);		
+
+		//dlclose(handle);
+	}
+
+
+}
+
 static int engine_init_display(struct engine* engine) {
+
+	InitLibFunction();
+
     // initialize OpenGL ES and EGL
 
     /*
@@ -294,9 +336,9 @@ void android_main(struct android_app* state) {
                     ASensorEvent event;
                     while (ASensorEventQueue_getEvents(engine.sensorEventQueue,
                             &event, 1) > 0) {
-                        LOGI("accelerometer: x=%f y=%f z=%f",
+                        /*LOGI("accelerometer: x=%f y=%f z=%f",
                                 event.acceleration.x, event.acceleration.y,
-                                event.acceleration.z);
+                                event.acceleration.z);*/
                     }
                 }
             }
