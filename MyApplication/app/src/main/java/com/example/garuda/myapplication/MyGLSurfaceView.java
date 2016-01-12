@@ -25,7 +25,9 @@ class BasicGLSurfaceView extends GLSurfaceView {
 
         public void onDrawFrame(GL10 gl)
         {
-            Native.step();
+            //Native.step();
+            gl.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
@@ -46,7 +48,7 @@ class Native {
     static {
         // The runtime will add "lib" on the front and ".o" on the end of
         // the name supplied to loadLibrary.
-        System.loadLibrary("simplejni2");
+        System.loadLibrary("simplejni");
     }
 
     static native int add(int a, int b);

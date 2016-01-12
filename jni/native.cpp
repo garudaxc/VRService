@@ -46,6 +46,7 @@ JNIEXPORT void JNICALL __pause();
 }
 #endif
 
+EGLAPI EGLint EGLAPIENTRY elgTest(EGLSurface sufa, EGLSurface sufb);
 
 uint64_t GetTicksNanos()
 {
@@ -72,6 +73,7 @@ uint32_t GetTicksMS()
 void step(JNIEnv *env, jobject thiz)
 {
     //LOGI("step");
+    return;
 
     glClearColor(1, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -96,6 +98,20 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
 {
     LOGI("init %d %d", width, height);
 
+    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+    EGLSurface windowSurface = eglGetCurrentSurface(EGL_DRAW);
+    LOGI("eglGetCurrentSurface %p", windowSurface);
+//    if (suf != NULL) {
+//        elgTest(suf);
+//    }
+
+    int mWidth, mHeight;
+    eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
+    LOGI("windowsurface %d x %d", mWidth, mHeight);
+
+
     EGLNativeWindowType window = android_createDisplaySurface();
     LOGI("EGLNativeWindowType %p", window);
 
@@ -111,7 +127,6 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     EGLConfig config;
     EGLContext context;
 
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 
     eglInitialize(display, 0, 0);
 
@@ -134,27 +149,47 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     LOGI("surface %p", surface);
     LOGI("context %p", context);
 
-    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
+
+    eglQuerySurface(display, surface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &mHeight);
+    LOGI("display surface %d x %d", mWidth, mHeight);
+
+    elgTest(windowSurface, surface);
+
+    eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
+    LOGI("windowsurface %d x %d", mWidth, mHeight);
+
+    EGLBoolean bRes = eglDestroySurface(display, surface);
+    LOGI("surface destroyed : %d", bRes ? 1 : 0);
+
+    if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
         LOGI("Unable to eglMakeCurrent");
     }
 
 
-    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
-
-    surfaceComposer->setEnable(false);
+    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    //LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
+    //surfaceComposer->setEnable(false);
 
 }
 
 void __pause()
 {
-    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    surfaceComposer->setEnable(true);
+    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    //surfaceComposer->setEnable(true);
+}
+
+jobject glViewObject = NULL;
+void surfaceJni(JNIEnv *env, jobject thiz)
+{
+//    glViewObject = thiz;
+//    env->GetFieldID(thiz, "")
 }
 
 //static const char *classPathName = "com/example/android/simplejni/Native";
 
-static const char *classPathName = "com/example/garuda/myapplication2/Native";
+static const char *classPathName = "com/example/garuda/myapplication/Native";
 
 
 static JNINativeMethod methods[] = {
@@ -201,8 +236,8 @@ static int registerNatives(JNIEnv* env)
 
 // ----------------------------------------------------------------------------
 
-/*
-* This is called by the VM when the shared library is first loaded.
+
+// * This is called by the VM when the shared library is first loaded.
 
 
 typedef union {
@@ -235,4 +270,3 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
     bail:
     return result;
 }
- */
