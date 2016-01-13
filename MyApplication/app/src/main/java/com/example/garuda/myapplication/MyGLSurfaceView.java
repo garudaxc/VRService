@@ -8,6 +8,9 @@ import android.content.Context;
 import android.opengl.GLSurfaceView;
 
 import android.opengl.GLES20;
+import android.util.Log;
+
+import java.lang.reflect.Method;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -17,6 +20,30 @@ class BasicGLSurfaceView extends GLSurfaceView {
         super(context);
         //setEGLContextClientVersion(2);
         setRenderer(new Renderer());
+
+        Class<?> demo=null;
+        try{
+            demo=Class.forName("android.vr.VRService");
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Object o = null;
+        try {
+            o = demo.newInstance();
+        } catch (InstantiationException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+        Method[] methods = demo.getMethods();
+        //methods[0].invoke()
+
+        Log.i("BasicGLSurfaceView", "BasicGLSurfaceView: " + o.toString());
+
     }
 
 
@@ -28,11 +55,12 @@ class BasicGLSurfaceView extends GLSurfaceView {
             //Native.step();
             gl.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
             gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
+
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
 
-            Native.init(width, height);
+            //Native.init(width, height);
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
