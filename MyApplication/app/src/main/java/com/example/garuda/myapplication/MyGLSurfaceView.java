@@ -10,12 +10,15 @@ import android.opengl.GLSurfaceView;
 import android.opengl.GLES20;
 import android.util.Log;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 class BasicGLSurfaceView extends GLSurfaceView {
+    static String TAG = "BasicGLSurfaceView";
+
     public BasicGLSurfaceView(Context context) {
         super(context);
         //setEGLContextClientVersion(2);
@@ -23,7 +26,7 @@ class BasicGLSurfaceView extends GLSurfaceView {
 
         Class<?> demo=null;
         try{
-            demo=Class.forName("android.vr.VRService");
+            demo=Class.forName("android.app.VRSurfaceManager");
         }catch (Exception e) {
             e.printStackTrace();
         }
@@ -39,10 +42,36 @@ class BasicGLSurfaceView extends GLSurfaceView {
             e.printStackTrace();
         }
 
-        Method[] methods = demo.getMethods();
-        //methods[0].invoke()
 
-        Log.i("BasicGLSurfaceView", "BasicGLSurfaceView: " + o.toString());
+//        Method[] methods = demo.getMethods();
+//        for (int i = 0; i < methods.length; i++)
+//        {
+//            Method m = methods[i];
+//            Log.i(TAG, String.format("method %d %s", i, m.getName()));
+//
+//        }
+
+        Method m = null;
+        try {
+            m = demo.getMethod("setFrontBuffer", int.class, boolean.class);
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        }
+
+        if (m != null)
+        {
+            try {
+                Log.i(TAG, "BasicGLSurfaceView: invoke method");
+                m.invoke(null, 123, true);
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            } catch (InvocationTargetException e) {
+                e.printStackTrace();
+            }
+        }
+
+        //methods[0].invoke()
+        //Log.i("BasicGLSurfaceView", "BasicGLSurfaceView: " + o.toString());
 
     }
 
