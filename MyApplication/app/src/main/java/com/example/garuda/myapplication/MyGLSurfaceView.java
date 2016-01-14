@@ -24,51 +24,51 @@ class BasicGLSurfaceView extends GLSurfaceView {
         //setEGLContextClientVersion(2);
         setRenderer(new Renderer());
 
-        Class<?> demo=null;
-        try{
-            demo=Class.forName("android.app.VRSurfaceManager");
-        }catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        Object o = null;
-        try {
-            o = demo.newInstance();
-        } catch (InstantiationException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-
-
-//        Method[] methods = demo.getMethods();
-//        for (int i = 0; i < methods.length; i++)
-//        {
-//            Method m = methods[i];
-//            Log.i(TAG, String.format("method %d %s", i, m.getName()));
-//
+//        Class<?> demo=null;
+//        try{
+//            demo=Class.forName("android.app.VRSurfaceManager");
+//        }catch (Exception e) {
+//            e.printStackTrace();
 //        }
-
-        Method m = null;
-        try {
-            m = demo.getMethod("setFrontBuffer", int.class, boolean.class);
-        } catch (NoSuchMethodException e) {
-            e.printStackTrace();
-        }
-
-        if (m != null)
-        {
-            try {
-                Log.i(TAG, "BasicGLSurfaceView: invoke method");
-                m.invoke(null, 123, true);
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            }
-        }
+//
+//        Object o = null;
+//        try {
+//            o = demo.newInstance();
+//        } catch (InstantiationException e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//        } catch (IllegalAccessException e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//        }
+//
+//
+////        Method[] methods = demo.getMethods();
+////        for (int i = 0; i < methods.length; i++)
+////        {
+////            Method m = methods[i];
+////            Log.i(TAG, String.format("method %d %s", i, m.getName()));
+////
+////        }
+//
+//        Method m = null;
+//        try {
+//            m = demo.getMethod("setFrontBuffer", int.class, boolean.class);
+//        } catch (NoSuchMethodException e) {
+//            e.printStackTrace();
+//        }
+//
+//        if (m != null)
+//        {
+//            try {
+//                Log.i(TAG, "BasicGLSurfaceView: invoke method");
+//                m.invoke(null, 123, true);
+//            } catch (IllegalAccessException e) {
+//                e.printStackTrace();
+//            } catch (InvocationTargetException e) {
+//                e.printStackTrace();
+//            }
+//        }
 
         //methods[0].invoke()
         //Log.i("BasicGLSurfaceView", "BasicGLSurfaceView: " + o.toString());
@@ -89,7 +89,7 @@ class BasicGLSurfaceView extends GLSurfaceView {
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
 
-            //Native.init(width, height);
+            Native.init(width, height);
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {

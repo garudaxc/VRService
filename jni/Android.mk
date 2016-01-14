@@ -32,7 +32,7 @@ LOCAL_SRC_FILES:= \
 
 # All of the shared libraries we link against.
 LOCAL_SHARED_LIBRARIES := \
-	libutils libEGL libGLESv1_CM libui libbinder libgui
+	libutils libEGL libGLESv1_CM
 
 # No static libraries.
 LOCAL_STATIC_LIBRARIES :=

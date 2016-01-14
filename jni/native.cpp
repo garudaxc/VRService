@@ -16,37 +16,17 @@
 
 #define LOG_TAG "simplejni"
 #include <utils/Log.h>
-#include <binder/BinderService.h>
-#include <binder/IServiceManager.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
-#include <surfaceflinger/ISurfaceComposer.h>
-
 #include <stdio.h>
-#include <ui/FramebufferNativeWindow.h>
-
 #include "jni.h"
 #include <EGL/egl.h>
 #include <GLES/gl.h>
 #include <unistd.h>
 
 
-using namespace android;
 EGLDisplay display = NULL;
 EGLSurface surface = NULL;
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz);
-JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height);
-JNIEXPORT void JNICALL __pause();
-#ifdef __cplusplus
-}
-#endif
-
-EGLAPI EGLint EGLAPIENTRY elgTest(EGLSurface sufa, EGLSurface sufb);
 
 uint64_t GetTicksNanos()
 {
@@ -94,83 +74,53 @@ void step(JNIEnv *env, jobject thiz)
     }
 }
 
+
+
+jclass		surfaceClass;
+jmethodID	setFrontBufferID;
+
 void init(JNIEnv *env, jobject thiz, jint width, jint height)
 {
-    LOGI("init %d %d", width, height);
 
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if ( env == NULL ) {
+        LOGE( "VrSurfaceManager::Init - Invalid jni" );
+        return;
+    }
 
-    EGLSurface windowSurface = eglGetCurrentSurface(EGL_DRAW);
-    LOGI("eglGetCurrentSurface %p", windowSurface);
-//    if (suf != NULL) {
-//        elgTest(suf);
-//    }
+    // Determine if the Java Front Buffer IF exists. If not, fall back
+    // to using the egl extensions.
+    jclass lc = env->FindClass( "android/app/VRSurfaceManager" );
+    if ( lc != NULL ) {
+        surfaceClass = (jclass)env->NewGlobalRef( lc );
+        LOGI( "Found VrSurfaceManager API: %p", surfaceClass );
+        env->DeleteLocalRef( lc );
+    }
 
-    int mWidth, mHeight;
-    eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
-    eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
-    LOGI("windowsurface %d x %d", mWidth, mHeight);
+    // Clear NoClassDefFoundError, if thrown
+    if ( env->ExceptionOccurred() ) {
+        env->ExceptionClear();
+        LOGI( "Clearing JNI Exceptions" );
+    }
 
+    // Look up the Java Front Buffer IF method IDs
+    if ( surfaceClass != NULL ) {
+        setFrontBufferID = env->GetStaticMethodID( surfaceClass, "setFrontBuffer", "(IZ)V" );
+//        getFrontBufferAddressID = env->GetStaticMethodID( surfaceClass, "getFrontBufferAddress", "(I)I" );
+//        getSurfaceBufferAddressID = env->GetStaticMethodID( surfaceClass, "getSurfaceBufferAddress", "(I[II)I" );
+//        getClientBufferAddressID = env->GetStaticMethodID( surfaceClass, "getClientBufferAddress", "(I)I" );
+    }
 
-    EGLNativeWindowType window = android_createDisplaySurface();
-    LOGI("EGLNativeWindowType %p", window);
-
-    const EGLint attribs[] = {
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-            EGL_BLUE_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_RED_SIZE, 8,
-            EGL_NONE
-    };
-    EGLint w, h, dummy, format;
-    EGLint numConfigs;
-    EGLConfig config;
-    EGLContext context;
-
-
-    eglInitialize(display, 0, 0);
-
-    /* Here, the application chooses the configuration it desires. In this
-     * sample, we have a very simplified selection process, where we pick
-     * the first EGLConfig that matches our criteria */
-    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
-
-    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
-     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
-     * As soon as we picked a EGLConfig, we can safely reconfigure the
-     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
-    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
-
-    //ANativeWindow_setBuffersGeometry(window, 0, 0, format);
-
-    surface = eglCreateWindowSurface(display, config, window, NULL);
-    context = eglCreateContext(display, config, NULL, NULL);
-
-    LOGI("surface %p", surface);
-    LOGI("context %p", context);
-
-
-    eglQuerySurface(display, surface, EGL_WIDTH,  &mWidth);
-    eglQuerySurface(display, surface, EGL_HEIGHT, &mHeight);
-    LOGI("display surface %d x %d", mWidth, mHeight);
-
-    elgTest(windowSurface, surface);
-
-    eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
-    eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
-    LOGI("windowsurface %d x %d", mWidth, mHeight);
-
-    EGLBoolean bRes = eglDestroySurface(display, surface);
-    LOGI("surface destroyed : %d", bRes ? 1 : 0);
-
-    if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
-        LOGI("Unable to eglMakeCurrent");
+    if (setFrontBufferID == NULL) {
+        LOGE("can not find jni method setFrontBuffer!");
+        return;
     }
 
 
-    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    //LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
-    //surfaceComposer->setEnable(false);
+    EGLSurface windowSurface = eglGetCurrentSurface(EGL_DRAW);
+
+    LOGI("Calling java method");
+    // Use the Java Front Buffer IF
+    env->CallStaticVoidMethod(surfaceClass, setFrontBufferID, (int) windowSurface, true);
 
 }
 

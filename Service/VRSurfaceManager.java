@@ -12,7 +12,7 @@ import java.util.StringTokenizer;
 public class VRSurfaceManager {
     private static final String TAG = "VRSurfaceManager";
 
-
+fr
 	public VRSurfaceManager()
 	{
 		Log.i(TAG, "VRSurfaceManager: construct");
