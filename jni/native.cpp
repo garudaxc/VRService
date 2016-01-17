@@ -19,13 +19,17 @@
 #include <stdio.h>
 #include "jni.h"
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES/gl.h>
 #include <unistd.h>
+#include <ui/FramebufferNativeWindow.h>
+#include <system/window.h>
+
+using namespace android;
 
 
 EGLDisplay display = NULL;
 EGLSurface surface = NULL;
-
 
 
 uint64_t GetTicksNanos()
@@ -52,7 +56,7 @@ uint32_t GetTicksMS()
 
 void step(JNIEnv *env, jobject thiz)
 {
-    //LOGI("step");
+    //ALOGI("step");
     return;
 
     glClearColor(1, 0, 0, 1);
@@ -70,7 +74,7 @@ void step(JNIEnv *env, jobject thiz)
         numFrames = 0;
         lastTime = time;
 
-        LOGI("fps %.2f", fps);
+        ALOGI("fps %.2f", fps);
     }
 }
 
@@ -79,11 +83,83 @@ void step(JNIEnv *env, jobject thiz)
 jclass		surfaceClass;
 jmethodID	setFrontBufferID;
 
+
+EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface sufb);
+
 void init(JNIEnv *env, jobject thiz, jint width, jint height)
 {
 
+
+    EGLNativeWindowType window = android_createDisplaySurface();
+    ALOGI("create EGLNativeWindowType %p", window);
+
+    const EGLint attribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+            EGL_BLUE_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_RED_SIZE, 8,
+            EGL_NONE
+    };
+    EGLint w, h, dummy, format;
+    EGLint numConfigs;
+    EGLConfig config;
+
+
+    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    /* Here, the application chooses the configuration it desires. In this
+     * sample, we have a very simplified selection process, where we pick
+     * the first EGLConfig that matches our criteria */
+    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
+
+    ALOGI("numconfig %d", numConfigs);
+
+    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
+     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
+     * As soon as we picked a EGLConfig, we can safely reconfigure the
+     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
+    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
+    ALOGI("format %d", format);
+
+    ANativeWindow_setBuffersGeometry(window, 0, 0, format);
+
+    EGLSurface framebufferSurface = eglCreateWindowSurface(display, config, window, NULL);
+
+
+    EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
+    eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
+
+    //gOrigSurface = framebufferSurface;
+
+    //EGLBoolean bRes = eglDestroySurface(display, surface);
+    //ALOGI("surface destroyed : %d", bRes ? 1 : 0);
+
+    EGLContext context = eglGetCurrentContext();
+    if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
+        ALOGI("Unable to eglMakeCurrent");
+    }
+
+//    glClearColor(1.0f, 0.0f, 0.0f, 1.f);
+//    glClear(GL_COLOR_BUFFER_BIT);
+
+    return;
+
+
+
+
+
+
+
+
+
+
+
+
+
     if ( env == NULL ) {
-        LOGE( "VrSurfaceManager::Init - Invalid jni" );
+        ALOGE( "VrSurfaceManager::Init - Invalid jni" );
         return;
     }
 
@@ -92,14 +168,14 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     jclass lc = env->FindClass( "android/app/VRSurfaceManager" );
     if ( lc != NULL ) {
         surfaceClass = (jclass)env->NewGlobalRef( lc );
-        LOGI( "Found VrSurfaceManager API: %p", surfaceClass );
+        ALOGI( "Found VrSurfaceManager API: %p", surfaceClass );
         env->DeleteLocalRef( lc );
     }
 
     // Clear NoClassDefFoundError, if thrown
     if ( env->ExceptionOccurred() ) {
         env->ExceptionClear();
-        LOGI( "Clearing JNI Exceptions" );
+        ALOGI( "Clearing JNI Exceptions" );
     }
 
     // Look up the Java Front Buffer IF method IDs
@@ -111,16 +187,16 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     }
 
     if (setFrontBufferID == NULL) {
-        LOGE("can not find jni method setFrontBuffer!");
+        ALOGE("can not find jni method setFrontBuffer!");
         return;
     }
 
 
-    EGLSurface windowSurface = eglGetCurrentSurface(EGL_DRAW);
-
-    LOGI("Calling java method");
-    // Use the Java Front Buffer IF
-    env->CallStaticVoidMethod(surfaceClass, setFrontBufferID, (int) windowSurface, true);
+//    EGLSurface windowSurface = eglGetCurrentSurface(EGL_DRAW);
+//
+//    ALOGI("Calling java method");
+//    // Use the Java Front Buffer IF
+//    env->CallStaticVoidMethod(surfaceClass, setFrontBufferID, (int) windowSurface, true);
 
 }
 
@@ -157,11 +233,11 @@ static int registerNativeMethods(JNIEnv* env, const char* className,
 
     clazz = env->FindClass(className);
     if (clazz == NULL) {
-        LOGE("Native registration unable to find class '%s'", className);
+        ALOGE("Native registration unable to find class '%s'", className);
         return JNI_FALSE;
     }
     if (env->RegisterNatives(clazz, gMethods, numMethods) < 0) {
-        LOGE("RegisterNatives failed for '%s'", className);
+        ALOGE("RegisterNatives failed for '%s'", className);
         return JNI_FALSE;
     }
 
@@ -202,16 +278,16 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
     jint result = -1;
     JNIEnv* env = NULL;
 
-    LOGI("JNI_OnLoad");
+    ALOGI("JNI_OnLoad");
 
     if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
-        LOGE("ERROR: GetEnv failed");
+        ALOGE("ERROR: GetEnv failed");
         goto bail;
     }
     env = uenv.env;
 
     if (registerNatives(env) != JNI_TRUE) {
-        LOGE("ERROR: registerNatives failed");
+        ALOGE("ERROR: registerNatives failed");
         goto bail;
     }
 

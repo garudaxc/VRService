@@ -1,17 +1,17 @@
 
 #define LOG_TAG "VRSurfaceManager"
 
+#include <cutils/log.h>
+#include <jni.h>
 #include <stdio.h>
-#include <utils/Log.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
-#include <surfaceflinger/ISurfaceComposer.h>
-#include <ui/FramebufferNativeWindow.h>
-
-#include "jni.h"
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES/gl.h>
 #include <unistd.h>
 
+#include <gui/SurfaceComposerClient.h>
+#include <gui/ISurfaceComposer.h>
+#include <ui/FramebufferNativeWindow.h>
 
 
 using namespace android;
@@ -21,31 +21,34 @@ EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface suf
 
 EGLSurface gOrigSurface = NULL;
 
-static void SetFrontBuffer(JNIEnv *env, jobject thiz, jint surface)
+static void SetFrontBuffer(JNIEnv *env, jobject thiz, jint surface, jboolean bSet)
 {
     EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     EGLSurface windowSurface = (EGLSurface)surface;
-    LOGI("native SetFrontBuffer %p", windowSurface);
+    ALOGI("native SetFrontBuffer %p", windowSurface);
 
     if (gOrigSurface != NULL) {
-        LOGE("gOrigSurface not NULL, front buffer may already seted!");
+        ALOGE("gOrigSurface not NULL, front buffer may already seted!");
         return;
     }
 
     int mWidth, mHeight;
     eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
     eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
-    LOGI("windowsurface %d x %d", mWidth, mHeight);
+    ALOGI("windowsurface %d x %d", mWidth, mHeight);
 
     EGLContext context = eglGetCurrentContext();
-    LOGI("current context %p", context);
+    ALOGI("current context %p", context);
 
 
     EGLNativeWindowType window = android_createDisplaySurface();
-    LOGI("create EGLNativeWindowType %p", window);
+    ALOGI("create EGLNativeWindowType %p", window);
 
     const EGLint attribs[] = {
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
             EGL_BLUE_SIZE, 8,
             EGL_GREEN_SIZE, 8,
             EGL_RED_SIZE, 8,
@@ -58,8 +61,9 @@ static void SetFrontBuffer(JNIEnv *env, jobject thiz, jint surface)
 
     /* Here, the application chooses the configuration it desires. In this
      * sample, we have a very simplified selection process, where we pick
-     * the first EGLConfig that matches our criteria */
+     * the first EGLConfig tdhat matches our criteria */
     eglChooseConfig(display, attribs, &config, 1, &numConfigs);
+    ALOGI("numconfigs %d", numConfigs);
 
     /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
      * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
@@ -73,24 +77,28 @@ static void SetFrontBuffer(JNIEnv *env, jobject thiz, jint surface)
 
     eglQuerySurface(display, framebufferSurface, EGL_WIDTH,  &mWidth);
     eglQuerySurface(display, framebufferSurface, EGL_HEIGHT, &mHeight);
-    LOGI("framebuffer surface %d x %d", mWidth, mHeight);
+    ALOGI("framebuffer surface %d x %d", mWidth, mHeight);
     eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
 
     eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
     eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
-    LOGI("windowsurface %d x %d", mWidth, mHeight);
+    ALOGI("windowsurface %d x %d", mWidth, mHeight);
 
     gOrigSurface = framebufferSurface;
 
     //EGLBoolean bRes = eglDestroySurface(display, surface);
-    //LOGI("surface destroyed : %d", bRes ? 1 : 0);
+    //ALOGI("surface destroyed : %d", bRes ? 1 : 0);
 
     if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
-        LOGI("Unable to eglMakeCurrent");
+        ALOGI("Unable to eglMakeCurrent");
     }
 
-    sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    LOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
+    glClearColor(1.0f, 0.0f, 0.0f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+
+    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
+    //ALOGI("SurfaceFlinger services ISurfaceComposer %p", surfaceComposer.get());
     //surfaceComposer->setEnable(false);
 
 }
@@ -110,7 +118,7 @@ static void SetFrontBuffer(JNIEnv *env, jobject thiz, jint surface)
 
 static const char *classPathName = "android/app/VRSurfaceManager";
 static JNINativeMethod methods[] = {
-        {"nativeSetFrontBuffer", "(I)V", (void*)SetFrontBuffer },
+        {"nativeSetFrontBuffer", "(IZ)V", (void*)SetFrontBuffer },
 };
 
 /*
@@ -123,11 +131,11 @@ static int registerNativeMethods(JNIEnv* env, const char* className,
 
     clazz = env->FindClass(className);
     if (clazz == NULL) {
-        LOGE("Native registration unable to find class '%s'", className);
+        ALOGE("Native registration unable to find class '%s'", className);
         return JNI_FALSE;
     }
     if (env->RegisterNatives(clazz, gMethods, numMethods) < 0) {
-        LOGE("RegisterNatives failed for '%s'", className);
+        ALOGE("RegisterNatives failed for '%s'", className);
         return JNI_FALSE;
     }
 
@@ -168,16 +176,16 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
     jint result = -1;
     JNIEnv* env = NULL;
 
-    LOGI("VRSurfaceManager JNI_OnLoad");
+    ALOGI("VRSurfaceManager JNI_OnLoad");
 
     if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
-        LOGE("ERROR: GetEnv failed");
+        ALOGE("ERROR: GetEnv failed");
         goto bail;
     }
     env = uenv.env;
 
     if (registerNatives(env) != JNI_TRUE) {
-        LOGE("ERROR: registerNatives failed");
+        ALOGE("ERROR: registerNatives failed");
         goto bail;
     }
 

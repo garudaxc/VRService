@@ -82,8 +82,8 @@ class BasicGLSurfaceView extends GLSurfaceView {
         public void onDrawFrame(GL10 gl)
         {
             //Native.step();
-            gl.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-            gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
+            //gl.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            //gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
 
         }
 
@@ -98,7 +98,6 @@ class BasicGLSurfaceView extends GLSurfaceView {
     }
 
 }
-
 
 
 class Native {

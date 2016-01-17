@@ -10,10 +10,11 @@ LOCAL_SRC_FILES:= \
 
 
 LOCAL_SHARED_LIBRARIES := \
-	libutils \
+	libcutils \
 	libEGL \
 	libui \
-	libgui
+	libgui \
+	libGLESv2
 	
 
 include $(BUILD_SHARED_LIBRARY)
