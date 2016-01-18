@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <ui/FramebufferNativeWindow.h>
 #include <system/window.h>
+#include <android/native_window_jni.h>
 
 using namespace android;
 
@@ -78,6 +79,73 @@ void step(JNIEnv *env, jobject thiz)
     }
 }
 
+jobject nativeCreateSurface(JNIEnv *env, jobject thiz)
+{
+    EGLNativeWindowType window = android_createDisplaySurface();
+    ALOGI("create EGLNativeWindowType %p", window);
+
+    const EGLint attribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+            EGL_BLUE_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_RED_SIZE, 8,
+            EGL_NONE
+    };
+    EGLint w, h, dummy, format;
+    EGLint numConfigs;
+    EGLConfig config;
+
+
+    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    /* Here, the application chooses the configuration it desires. In this
+     * sample, we have a very simplified selection process, where we pick
+     * the first EGLConfig that matches our criteria */
+    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
+
+    ALOGI("numconfig %d", numConfigs);
+
+    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
+     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
+     * As soon as we picked a EGLConfig, we can safely reconfigure the
+     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
+    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
+    ALOGI("format %d", format);
+
+
+    EGLSurface framebufferSurface = eglCreateWindowSurface(display, config, window, NULL);
+
+    EGLint mWidth, mHeight;
+    eglQuerySurface(display, framebufferSurface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, framebufferSurface, EGL_HEIGHT, &mHeight);
+    ALOGI("framebufferSurface %d x %d", mWidth, mHeight);
+
+    //int32_t bSetWindowBuffer = ANativeWindow_setBuffersGeometry(nativeWin, mWidth, mHeight, format);
+    //ALOGI("ANativeWindow_setBuffersGeometry res %d", bSetWindowBuffer);
+
+
+    jclass clazz = env->FindClass("com/google/android/gles_jni/EGLSurfaceImpl");
+    ALOGI("found class %p", clazz);
+    if (clazz == NULL) {
+        return NULL;
+    }
+
+    jmethodID construct = env->GetMethodID(clazz,"<init>","(I)V");
+    ALOGI("construct method %p", construct);
+
+    if (construct == NULL)
+    {
+        return NULL;
+    }
+
+    jobject surface = env->NewObject(clazz,construct, (jint)framebufferSurface);
+    ALOGI("new object %p", surface);
+
+    return surface;
+}
+
 
 
 jclass		surfaceClass;
@@ -86,9 +154,10 @@ jmethodID	setFrontBufferID;
 
 EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface sufb);
 
-void init(JNIEnv *env, jobject thiz, jint width, jint height)
+void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
 {
-
+    ANativeWindow* nativeWin = ANativeWindow_fromSurface(env, surface);
+    ALOGI("native window %p", nativeWin);
 
     EGLNativeWindowType window = android_createDisplaySurface();
     ALOGI("create EGLNativeWindowType %p", window);
@@ -123,10 +192,16 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
     eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
     ALOGI("format %d", format);
 
-    ANativeWindow_setBuffersGeometry(window, 0, 0, format);
 
     EGLSurface framebufferSurface = eglCreateWindowSurface(display, config, window, NULL);
 
+    EGLint mWidth, mHeight;
+    eglQuerySurface(display, framebufferSurface, EGL_WIDTH,  &mWidth);
+    eglQuerySurface(display, framebufferSurface, EGL_HEIGHT, &mHeight);
+    ALOGI("framebufferSurface %d x %d", mWidth, mHeight);
+
+    int32_t bSetWindowBuffer = ANativeWindow_setBuffersGeometry(nativeWin, mWidth, mHeight, format);
+    ALOGI("ANativeWindow_setBuffersGeometry res %d", bSetWindowBuffer);
 
     EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
     eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
@@ -141,8 +216,8 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height)
         ALOGI("Unable to eglMakeCurrent");
     }
 
-//    glClearColor(1.0f, 0.0f, 0.0f, 1.f);
-//    glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(0.0f, 1.0f, 0.0f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     return;
 
@@ -220,7 +295,8 @@ static const char *classPathName = "com/example/garuda/myapplication/Native";
 
 static JNINativeMethod methods[] = {
         {"step", "()V", (void*)step },
-        {"init", "(II)V", (void*)init },
+        {"init", "(IILjava/lang/Object;)V", (void*)init },
+        {"nativeCreateSurface", "()Ljava/lang/Object;", (void*)nativeCreateSurface },
 };
 
 /*

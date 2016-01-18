@@ -32,7 +32,7 @@ LOCAL_SRC_FILES:= \
 
 # All of the shared libraries we link against.
 LOCAL_SHARED_LIBRARIES := \
-	libcutils libEGL libGLESv1_CM libGLESv2 libui
+	libcutils libEGL libGLESv1_CM libGLESv2 libui libandroid
 
 # No static libraries.
 LOCAL_STATIC_LIBRARIES :=

@@ -10,13 +10,15 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.widget.EditText;
 
 import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     private static final int REQUEST_ENABLE_BT = 1;
     private static final UUID MY_UUID = UUID.randomUUID();
@@ -35,6 +37,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        //SurfaceView sv = new SurfaceView( this );
+        //setContentView( sv );
+        //sv.getHolder().addCallback(this);
 
         setContentView(new BasicGLSurfaceView(this));
 
@@ -79,6 +85,21 @@ public class MainActivity extends Activity {
             connThread_ = new ConnectThread(mBluetoothAdapter, myDevice);
             connThread_.start();
         }*/
+    }
+
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        Native.init(width, height, holder.getSurface());
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder holder) {
+
     }
 
 
