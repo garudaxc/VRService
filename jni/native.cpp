@@ -154,8 +154,103 @@ jmethodID	setFrontBufferID;
 
 EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface sufb);
 
+void LogConfig(EGLDisplay dpy, EGLConfig config)
+{
+    ALOGI("config id %p", config);
+
+    EGLint r,g,b,a;
+    eglGetConfigAttrib(dpy, config, EGL_RED_SIZE,   &r);
+    eglGetConfigAttrib(dpy, config, EGL_GREEN_SIZE, &g);
+    eglGetConfigAttrib(dpy, config, EGL_BLUE_SIZE,  &b);
+    eglGetConfigAttrib(dpy, config, EGL_ALPHA_SIZE, &a);
+    ALOGI("bit width rgba %d%d%d%d", r, g, b, a);
+
+
+    EGLint id = 0;
+    EGLint nativeVisualId = 0;
+    EGLint nativeVisualType = 0;
+    eglGetConfigAttrib(dpy, config, EGL_CONFIG_ID, &id);
+    eglGetConfigAttrib(dpy, config, EGL_NATIVE_VISUAL_ID, &nativeVisualId);
+    eglGetConfigAttrib(dpy, config, EGL_NATIVE_VISUAL_TYPE, &nativeVisualType);
+    ALOGI("id %d visual id %d visual type %d", id, nativeVisualId, nativeVisualType);
+
+    EGLint surfaceType = 0;
+    eglGetConfigAttrib(dpy, config, EGL_SURFACE_TYPE, &surfaceType);
+    ALOGI("surface type %x", surfaceType);
+
+}
+
+void test_init2(JNIEnv *env, jobject surface)
+{
+    EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+    EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
+    EGLint surfaceConfigId = 0;
+    eglQuerySurface(dpy, windowSurface, EGL_CONFIG_ID, &surfaceConfigId);
+    ALOGI("surfaceConfigId %d", surfaceConfigId);
+    LogConfig(dpy, (EGLConfig)surfaceConfigId);
+
+
+    EGLNativeWindowType window = android_createDisplaySurface();
+    ALOGI("create EGLNativeWindowType %p", window);
+
+    ANativeWindow* win = (ANativeWindow*)window;
+
+    int format;
+    win->query(window, NATIVE_WINDOW_FORMAT, &format);
+    ALOGI("NATIVE_WINDOW_FORMAT %d", format);
+
+    EGLint attribs[] = {
+
+            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+            EGL_BLUE_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_RED_SIZE, 8,
+
+            //EGL_SURFACE_TYPE,       EGL_WINDOW_BIT,
+            EGL_NONE,               0,
+            EGL_NONE
+    };
+
+
+    EGLConfig config = NULL;
+    EGLint numConfigs = -1, n=0;
+    eglGetConfigs(dpy, NULL, 0, &numConfigs);
+    ALOGI("numconfigs %d", numConfigs);
+
+    EGLConfig* const configs = new EGLConfig[numConfigs];
+    eglChooseConfig(dpy, attribs, configs, numConfigs, &n);
+
+    for (int i=0 ; i<n ; i++) {
+        EGLint id = 0;
+        EGLint nativeVisualId = 0;
+        EGLint nativeVisualType = 0;
+        eglGetConfigAttrib(dpy, configs[i], EGL_CONFIG_ID, &id);
+        eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_ID, &nativeVisualId);
+        eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_TYPE, &nativeVisualType);
+
+        if (nativeVisualId == format){
+            //ALOGI("config %p id %d visual id %d visual type %d",configs[i], id, nativeVisualId, nativeVisualType);
+            LogConfig(dpy, configs[i]);
+        }
+
+    }
+
+    delete [] configs;
+}
+
+
+
 void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
 {
+    //test_init2(env, surface);
+    //return;
+
+    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    //eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
     ANativeWindow* nativeWin = ANativeWindow_fromSurface(env, surface);
     ALOGI("native window %p", nativeWin);
 
@@ -163,13 +258,16 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
     ALOGI("create EGLNativeWindowType %p", window);
 
     const EGLint attribs[] = {
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+
             EGL_RECORDABLE_ANDROID, EGL_TRUE,
             EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
             EGL_BLUE_SIZE, 8,
             EGL_GREEN_SIZE, 8,
             EGL_RED_SIZE, 8,
+
+            //EGL_SURFACE_TYPE,       EGL_WINDOW_BIT,
+            EGL_NONE,               0,
             EGL_NONE
     };
     EGLint w, h, dummy, format;
@@ -204,7 +302,7 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
     ALOGI("ANativeWindow_setBuffersGeometry res %d", bSetWindowBuffer);
 
     EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
-    eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
+    //eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
 
     //gOrigSurface = framebufferSurface;
 
@@ -212,7 +310,11 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
     //ALOGI("surface destroyed : %d", bRes ? 1 : 0);
 
     EGLContext context = eglGetCurrentContext();
-    if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
+
+    //EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
+    ALOGI("create context %p", context);
+
+    if (eglMakeCurrent(display, framebufferSurface, framebufferSurface, context) == EGL_FALSE) {
         ALOGI("Unable to eglMakeCurrent");
     }
 

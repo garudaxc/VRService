@@ -31,6 +31,7 @@ class BasicGLSurfaceView extends GLSurfaceView {
                     EGL10.EGL_RED_SIZE, 8,
                     EGL10.EGL_GREEN_SIZE, 8,
                     EGL10.EGL_BLUE_SIZE, 8,
+                    EGL10.EGL_ALPHA_SIZE, 8,
                     EGL10.EGL_DEPTH_SIZE, 0,
                     EGL10.EGL_STENCIL_SIZE, 0,
                     //EGL10.EGL_RECORDABLE_ANDROID, EGL_TRUE,
@@ -92,9 +93,9 @@ class BasicGLSurfaceView extends GLSurfaceView {
         super(context);
         setEGLContextClientVersion(2);
 
-        setEGLWindowSurfaceFactory(new MySurfaceFactory());
+        //setEGLWindowSurfaceFactory(new MySurfaceFactory());
 
-        //setEGLConfigChooser(new MyConfigChooser());
+        setEGLConfigChooser(new MyConfigChooser());
 
         setRenderer(new Renderer(this));
 
@@ -154,7 +155,6 @@ class BasicGLSurfaceView extends GLSurfaceView {
     }
 
 
-
     private static class Renderer implements GLSurfaceView.Renderer {
 
         GLSurfaceView view_ = null;
@@ -174,7 +174,7 @@ class BasicGLSurfaceView extends GLSurfaceView {
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
             Surface sur = view_.getHolder().getSurface();
-            //Native.init(width, height, sur);
+            Native.init(width, height, sur);
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
