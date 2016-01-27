@@ -12,11 +12,17 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
 
 import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
+
+
+
 
 public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
@@ -41,6 +47,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         //SurfaceView sv = new SurfaceView( this );
         //setContentView( sv );
         //sv.getHolder().addCallback(this);
+
+        Window window = getWindow();
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.systemUiVisibility = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+        window.setAttributes(params);
 
         setContentView(new BasicGLSurfaceView(this));
 
