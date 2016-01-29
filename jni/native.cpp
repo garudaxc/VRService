@@ -32,6 +32,13 @@ using namespace android;
 EGLDisplay display = NULL;
 EGLSurface surface = NULL;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface);
+JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz);
+
 
 uint64_t GetTicksNanos()
 {
@@ -55,7 +62,7 @@ uint32_t GetTicksMS()
 
 
 
-void step(JNIEnv *env, jobject thiz)
+JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz)
 {
     //ALOGI("step");
     return;
@@ -156,7 +163,7 @@ EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface suf
 
 void LogConfig(EGLDisplay dpy, EGLConfig config)
 {
-    ALOGI("config id %p", config);
+    ALOGI("config %p", config);
 
     EGLint r,g,b,a;
     eglGetConfigAttrib(dpy, config, EGL_RED_SIZE,   &r);
@@ -180,7 +187,7 @@ void LogConfig(EGLDisplay dpy, EGLConfig config)
 
 }
 
-void test_init2(JNIEnv *env, jobject surface)
+static void test_init2(JNIEnv *env, jobject surface)
 {
     EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 
@@ -243,75 +250,97 @@ void test_init2(JNIEnv *env, jobject surface)
 
 
 
-void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
+
+JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
 {
     //test_init2(env, surface);
     //return;
 
+//    EGLContext context = eglGetCurrentContext();
+    //EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
     display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    //eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+//    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
-    ANativeWindow* nativeWin = ANativeWindow_fromSurface(env, surface);
-    ALOGI("native window %p", nativeWin);
+//    ANativeWindow* nativeWin = ANativeWindow_fromSurface(env, surface);
+//    ALOGI("native window %p", nativeWin);
 
     EGLNativeWindowType window = android_createDisplaySurface();
     ALOGI("create EGLNativeWindowType %p", window);
 
+    int format;
+    window->query(window, NATIVE_WINDOW_FORMAT, &format);
+    ALOGI("NATIVE_WINDOW_FORMAT %d", format);
+
     const EGLint attribs[] = {
 
-            EGL_RECORDABLE_ANDROID, EGL_TRUE,
-            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
-            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
-            EGL_BLUE_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_RED_SIZE, 8,
+//            EGL_RECORDABLE_ANDROID, EGL_TRUE,
+//            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+//            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+//            EGL_BLUE_SIZE, 8,
+//            EGL_GREEN_SIZE, 8,
+//            EGL_RED_SIZE, 8,
 
-            //EGL_SURFACE_TYPE,       EGL_WINDOW_BIT,
+            EGL_SURFACE_TYPE,       EGL_WINDOW_BIT,
             EGL_NONE,               0,
             EGL_NONE
     };
-    EGLint w, h, dummy, format;
+    EGLint w, h, dummy;
     EGLint numConfigs;
-    EGLConfig config;
+    EGLConfig config = 0;
 
 
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     /* Here, the application chooses the configuration it desires. In this
      * sample, we have a very simplified selection process, where we pick
      * the first EGLConfig that matches our criteria */
-    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
-
+    eglChooseConfig(display, attribs, NULL, 0, &numConfigs);
     ALOGI("numconfig %d", numConfigs);
 
-    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
-     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
-     * As soon as we picked a EGLConfig, we can safely reconfigure the
-     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
-    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
-    ALOGI("format %d", format);
+
+    EGLConfig* const configs = new EGLConfig[numConfigs];
+    eglChooseConfig(display, attribs, configs, numConfigs, &numConfigs);
+
+    for (int i=0 ; i<numConfigs ; i++) {
+        EGLint id = 0;
+        EGLint nativeVisualId = 0;
+        EGLint nativeVisualType = 0;
+        eglGetConfigAttrib(display, configs[i], EGL_CONFIG_ID, &id);
+        eglGetConfigAttrib(display, configs[i], EGL_NATIVE_VISUAL_ID, &nativeVisualId);
+        eglGetConfigAttrib(display, configs[i], EGL_NATIVE_VISUAL_TYPE, &nativeVisualType);
+
+        if (nativeVisualId == format){
+            //ALOGI("config %p id %d visual id %d visual type %d",configs[i], id, nativeVisualId, nativeVisualType);
+            LogConfig(display, configs[i]);
+            config = configs[i];
+            break;
+        }
+    }
 
 
     EGLSurface framebufferSurface = eglCreateWindowSurface(display, config, window, NULL);
 
     EGLint mWidth, mHeight;
-    eglQuerySurface(display, framebufferSurface, EGL_WIDTH,  &mWidth);
-    eglQuerySurface(display, framebufferSurface, EGL_HEIGHT, &mHeight);
-    ALOGI("framebufferSurface %d x %d", mWidth, mHeight);
 
-    int32_t bSetWindowBuffer = ANativeWindow_setBuffersGeometry(nativeWin, mWidth, mHeight, format);
-    ALOGI("ANativeWindow_setBuffersGeometry res %d", bSetWindowBuffer);
+//    eglQuerySurface(display, framebufferSurface, EGL_WIDTH,  &mWidth);
+//    eglQuerySurface(display, framebufferSurface, EGL_HEIGHT, &mHeight);
+//    ALOGI("framebufferSurface %p %d x %d", framebufferSurface, mWidth, mHeight);
+//    int32_t bSetWindowBuffer = ANativeWindow_setBuffersGeometry(nativeWin, mWidth, mHeight, format);
+//    ALOGI("ANativeWindow_setBuffersGeometry res %d", bSetWindowBuffer);
+//    eglQuerySurface(display, windowSurface, EGL_WIDTH,  &mWidth);
+//    eglQuerySurface(display, windowSurface, EGL_HEIGHT, &mHeight);
+//    ALOGI("windowSurface %p %d x %d", windowSurface, mWidth, mHeight);
+//    ALOGI("jobject surface %p", surface);
 
-    EGLSurface windowSurface = eglGetCurrentSurface( EGL_DRAW );
+
+
+
     //eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
-
     //gOrigSurface = framebufferSurface;
 
     //EGLBoolean bRes = eglDestroySurface(display, surface);
     //ALOGI("surface destroyed : %d", bRes ? 1 : 0);
 
-    EGLContext context = eglGetCurrentContext();
 
-    //EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
+    EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
     ALOGI("create context %p", context);
 
     if (eglMakeCurrent(display, framebufferSurface, framebufferSurface, context) == EGL_FALSE) {
@@ -321,13 +350,15 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
     glClearColor(0.0f, 1.0f, 0.0f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+
+    ALOGI("before swap buffer");
+    eglSwapBuffers(display, framebufferSurface);
+    eglSwapBuffers(display, framebufferSurface);
+    eglSwapBuffers(display, framebufferSurface);
+    ALOGI("after swap buffer");
+
+
     return;
-
-
-
-
-
-
 
 
 
@@ -376,6 +407,8 @@ void init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
 //    env->CallStaticVoidMethod(surfaceClass, setFrontBufferID, (int) windowSurface, true);
 
 }
+
+
 
 void __pause()
 {
@@ -444,33 +477,37 @@ static int registerNatives(JNIEnv* env)
 // * This is called by the VM when the shared library is first loaded.
 
 
-typedef union {
-    JNIEnv* env;
-    void* venv;
-} UnionJNIEnvToVoid;
+//typedef union {
+//    JNIEnv* env;
+//    void* venv;
+//} UnionJNIEnvToVoid;
+//
+//jint JNI_OnLoad(JavaVM* vm, void* reserved)
+//{
+//    UnionJNIEnvToVoid uenv;
+//    uenv.venv = NULL;
+//    jint result = -1;
+//    JNIEnv* env = NULL;
+//
+//    ALOGI("JNI_OnLoad");
+//
+//    if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
+//        ALOGE("ERROR: GetEnv failed");
+//        goto bail;
+//    }
+//    env = uenv.env;
+//
+//    if (registerNatives(env) != JNI_TRUE) {
+//        ALOGE("ERROR: registerNatives failed");
+//        goto bail;
+//    }
+//
+//    result = JNI_VERSION_1_4;
+//
+//    bail:
+//    return result;
+//}
 
-jint JNI_OnLoad(JavaVM* vm, void* reserved)
-{
-    UnionJNIEnvToVoid uenv;
-    uenv.venv = NULL;
-    jint result = -1;
-    JNIEnv* env = NULL;
-
-    ALOGI("JNI_OnLoad");
-
-    if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
-        ALOGE("ERROR: GetEnv failed");
-        goto bail;
-    }
-    env = uenv.env;
-
-    if (registerNatives(env) != JNI_TRUE) {
-        ALOGE("ERROR: registerNatives failed");
-        goto bail;
-    }
-
-    result = JNI_VERSION_1_4;
-
-    bail:
-    return result;
+#ifdef __cplusplus
 }
+#endif
