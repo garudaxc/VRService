@@ -14,14 +14,12 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL10;
-import javax.microedition.khronos.egl.*;
 
 class BasicGLSurfaceView extends GLSurfaceView {
     static String TAG = "BasicGLSurfaceView";
 
     class MyConfigChooser implements EGLConfigChooser
     {
-
         @Override
         public EGLConfig chooseConfig(EGL10 egl, EGLDisplay display) {
 
@@ -193,7 +191,9 @@ class Native {
         System.loadLibrary("simplejni");
     }
 
-    static native int add(int a, int b);
+    static native void nativeStart();
+    static native void nativeStop();
+
     static native void step();
     static native void init(int width, int height, Object surface);
     static native Object nativeCreateSurface();
