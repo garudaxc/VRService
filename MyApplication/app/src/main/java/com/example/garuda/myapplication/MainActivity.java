@@ -26,6 +26,12 @@ import java.util.UUID;
 
 public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
+    static {
+        // The runtime will add "lib" on the front and ".o" on the end of
+        // the name supplied to loadLibrary.
+        System.loadLibrary("simplejni");
+    }
+
     private static final int REQUEST_ENABLE_BT = 1;
     private static final UUID MY_UUID = UUID.randomUUID();
     private static final String TAG = "My Application";

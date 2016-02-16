@@ -26,6 +26,15 @@
 #include <system/window.h>
 #include <android/native_window_jni.h>
 
+#ifndef ALOGI
+#define ALOGI LOGI
+#endif
+
+#ifndef ALOGE
+#define ALOGE LOGE
+#endif
+
+
 using namespace android;
 
 
@@ -38,6 +47,19 @@ extern "C" {
 
 JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface);
 JNIEXPORT void JNICALL step(JNIEnv *env, jobject thiz);
+
+
+
+JNIEXPORT void JNICALL nativeStart(JNIEnv *env, jobject thiz)
+{
+    ALOGI("nativeStart");
+}
+
+
+JNIEXPORT void JNICALL nativeStop(JNIEnv *env, jobject thiz)
+{
+    ALOGI("nativeStop");
+}
 
 
 uint64_t GetTicksNanos()
@@ -94,7 +116,7 @@ jobject nativeCreateSurface(JNIEnv *env, jobject thiz)
     const EGLint attribs[] = {
             EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
             EGL_RECORDABLE_ANDROID, EGL_TRUE,
-            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            //EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
             EGL_BLUE_SIZE, 8,
             EGL_GREEN_SIZE, 8,
@@ -210,7 +232,7 @@ static void test_init2(JNIEnv *env, jobject surface)
     EGLint attribs[] = {
 
             EGL_RECORDABLE_ANDROID, EGL_TRUE,
-            EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
+            //EGL_FRAMEBUFFER_TARGET_ANDROID, EGL_TRUE,
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
             EGL_BLUE_SIZE, 8,
             EGL_GREEN_SIZE, 8,
@@ -332,7 +354,6 @@ JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, 
 
 
 
-
     //eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
     //gOrigSurface = framebufferSurface;
 
@@ -352,9 +373,11 @@ JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, 
 
 
     ALOGI("before swap buffer");
-    eglSwapBuffers(display, framebufferSurface);
-    eglSwapBuffers(display, framebufferSurface);
-    eglSwapBuffers(display, framebufferSurface);
+
+    for (int i = 0; i < 30; i++) {
+        eglSwapBuffers(display, framebufferSurface);
+    }
+
     ALOGI("after swap buffer");
 
 
@@ -410,12 +433,6 @@ JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, 
 
 
 
-void __pause()
-{
-    //sp<ISurfaceComposer> surfaceComposer = ComposerService::getComposerService();
-    //surfaceComposer->setEnable(true);
-}
-
 jobject glViewObject = NULL;
 void surfaceJni(JNIEnv *env, jobject thiz)
 {
@@ -430,6 +447,8 @@ static const char *classPathName = "com/example/garuda/myapplication/Native";
 
 static JNINativeMethod methods[] = {
         {"step", "()V", (void*)step },
+        {"nativeStart", "()V", (void*)nativeStart },
+        {"nativeStop", "()V", (void*)nativeStop },
         {"init", "(IILjava/lang/Object;)V", (void*)init },
         {"nativeCreateSurface", "()Ljava/lang/Object;", (void*)nativeCreateSurface },
 };
@@ -477,36 +496,36 @@ static int registerNatives(JNIEnv* env)
 // * This is called by the VM when the shared library is first loaded.
 
 
-//typedef union {
-//    JNIEnv* env;
-//    void* venv;
-//} UnionJNIEnvToVoid;
-//
-//jint JNI_OnLoad(JavaVM* vm, void* reserved)
-//{
-//    UnionJNIEnvToVoid uenv;
-//    uenv.venv = NULL;
-//    jint result = -1;
-//    JNIEnv* env = NULL;
-//
-//    ALOGI("JNI_OnLoad");
-//
-//    if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
-//        ALOGE("ERROR: GetEnv failed");
-//        goto bail;
-//    }
-//    env = uenv.env;
-//
-//    if (registerNatives(env) != JNI_TRUE) {
-//        ALOGE("ERROR: registerNatives failed");
-//        goto bail;
-//    }
-//
-//    result = JNI_VERSION_1_4;
-//
-//    bail:
-//    return result;
-//}
+typedef union {
+    JNIEnv* env;
+    void* venv;
+} UnionJNIEnvToVoid;
+
+jint JNI_OnLoad(JavaVM* vm, void* reserved)
+{
+    UnionJNIEnvToVoid uenv;
+    uenv.venv = NULL;
+    jint result = -1;
+    JNIEnv* env = NULL;
+
+    ALOGI("JNI_OnLoad");
+
+    if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
+        ALOGE("ERROR: GetEnv failed");
+        goto bail;
+    }
+    env = uenv.env;
+
+    if (registerNatives(env) != JNI_TRUE) {
+        ALOGE("ERROR: registerNatives failed");
+        goto bail;
+    }
+
+    result = JNI_VERSION_1_4;
+
+    bail:
+    return result;
+}
 
 #ifdef __cplusplus
 }
