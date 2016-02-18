@@ -167,6 +167,7 @@ jmethodID	setFrontBufferID;
 
 
 EGLAPI EGLint EGLAPIENTRY eglExchangeSurfaceFTVR(EGLSurface sufa, EGLSurface sufb);
+EGLAPI EGLint EGLAPIENTRY elgTest(EGLSurface sufa, EGLSurface sufb);
 
 void LogConfig(EGLDisplay dpy, EGLConfig config)
 {
@@ -227,7 +228,6 @@ static void test_init2(JNIEnv *env, jobject surface)
             EGL_NONE,               0,
             EGL_NONE
     };
-
 
     EGLConfig config = NULL;
     EGLint numConfigs = -1, n=0;
@@ -319,7 +319,6 @@ JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, 
         }
     }
 
-
     EGLSurface framebufferSurface = eglCreateWindowSurface(display, config, window, NULL);
 
     EGLint mWidth, mHeight;
@@ -334,38 +333,32 @@ JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, 
 //    ALOGI("windowSurface %p %d x %d", windowSurface, mWidth, mHeight);
 //    ALOGI("jobject surface %p", surface);
 
-
-
-
-    //eglExchangeSurfaceFTVR(windowSurface, framebufferSurface);
+    ALOGI("before elgTest");
+    elgTest(windowSurface, framebufferSurface);
+    ALOGI("after elgTest");
     //gOrigSurface = framebufferSurface;
 
     //EGLBoolean bRes = eglDestroySurface(display, surface);
     //ALOGI("surface destroyed : %d", bRes ? 1 : 0);
 
-
     EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
     ALOGI("create context %p", context);
 
-    if (eglMakeCurrent(display, framebufferSurface, framebufferSurface, context) == EGL_FALSE) {
+    if (eglMakeCurrent(display, windowSurface, windowSurface, context) == EGL_FALSE) {
         ALOGI("Unable to eglMakeCurrent");
     }
 
     glClearColor(0.0f, 1.0f, 0.0f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-
     ALOGI("before swap buffer");
-    eglSwapBuffers(display, framebufferSurface);
-    eglSwapBuffers(display, framebufferSurface);
-    eglSwapBuffers(display, framebufferSurface);
+    eglSwapBuffers(display, windowSurface);
+    eglSwapBuffers(display, windowSurface);
+    eglSwapBuffers(display, windowSurface);
     ALOGI("after swap buffer");
 
 
     return;
-
-
-
 
 
 
