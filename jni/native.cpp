@@ -23,6 +23,7 @@
 #include <GLES/gl.h>
 #include <unistd.h>
 #include <ui/FramebufferNativeWindow.h>
+#include <gui/Surface.h>
 #include <system/window.h>
 #include <android/native_window_jni.h>
 
@@ -364,18 +365,20 @@ JNIEXPORT EGLSurface JNICALL init2(EGLContext& cont, jint width, jint height)
     glClearColor(0.0f, 1.0f, 0.0f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-
+    FramebufferNativeWindow* nativeWindow = (FramebufferNativeWindow*)window;
+    nativeWindow->SetFrontBufferOnly(true);
     ALOGI("before swap buffer");
-
-    for (int i = 0; i < 30; i++) {
-        eglSwapBuffers(display, framebufferSurface);
-    }
 
     ALOGI("after swap buffer");
 
     return framebufferSurface;
 }
 
+JNIEXPORT void JNICALL SetRenderToFrontBuffer(ANativeWindow * nativeWindow)
+{
+    Surface* surface = (Surface*)nativeWindow;
+    surface->SetFrontBufferOnly(true);
+}
 
 JNIEXPORT void JNICALL init(JNIEnv *env, jobject thiz, jint width, jint height, jobject surface)
 {
