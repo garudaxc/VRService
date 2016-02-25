@@ -35,6 +35,8 @@
 #include <private/gui/ComposerService.h>
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
+//#include <ui/FramebufferNativeWindow.h>
+//#include <ui/ANativeObjectBase.h>
 
 namespace android {
 
@@ -205,15 +207,16 @@ int Surface::setSwapInterval(int interval) {
 
 int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
     ATRACE_CALL();
-    ALOGV("Surface::dequeueBuffer");
+    //ALOGI("Surface::dequeueBuffer %p %d %p", this, mFrontBufferOnly ? 1 : 0, mFrontBuffer.get());
     Mutex::Autolock lock(mMutex);
     if (mFrontBufferOnly && mFrontBuffer.get() != NULL)  {
         *buffer = mFrontBuffer.get();
         *fenceFd = -1;
 
-        ALOGV("Surface::dequeueBuffer use front buffer");
+        ALOGI("Surface::dequeueBuffer use front buffer %p", this);
         return OK;
     }
+
     int buf = -1;
     int reqW = mReqWidth ? mReqWidth : mUserWidth;
     int reqH = mReqHeight ? mReqHeight : mUserHeight;
@@ -294,11 +297,16 @@ int Surface::lockBuffer_DEPRECATED(android_native_buffer_t* buffer) {
 
 int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     ATRACE_CALL();
-    ALOGV("Surface::queueBuffer");
+    //ALOGI("Surface::queueBuffer %p %d %p", this, mFrontBufferOnly ? 1 : 0, mFrontBuffer.get());
     Mutex::Autolock lock(mMutex);
 
     if (mFrontBufferOnly && mFrontBuffer.get() == buffer) {
-        ALOGV("Surface::queueBuffer use front buffer");
+        ALOGI("Surface::queueBuffer use front buffer %p", this);
+
+        framebuffer_device_t* fb = fbDev;
+        buffer_handle_t handle = mFrontBuffer->handle;
+        int res = fb->post(fb, handle);
+
         return OK;
     }
 
@@ -316,7 +324,6 @@ int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     if (i < 0) {
         return i;
     }
-
 
     // Make sure the crop rectangle is entirely inside the buffer.
     Rect crop;
@@ -761,6 +768,7 @@ static status_t copyBlt(
 status_t Surface::lock(
         ANativeWindow_Buffer* outBuffer, ARect* inOutDirtyBounds)
 {
+    ALOGI("Surface::lock %p", this);
     if (mLockedBuffer != 0) {
         ALOGE("Surface::lock failed, already locked");
         return INVALID_OPERATION;
@@ -942,6 +950,8 @@ void Surface::SetFrontBufferOnly(bool bEnable)
         }
     }
     mFrontBufferOnly = bEnable;
+
+    ALOGI("Surface::SetFrontBufferOnly %p", this);
 }
 
 }; // namespace android
