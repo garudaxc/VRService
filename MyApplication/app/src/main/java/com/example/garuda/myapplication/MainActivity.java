@@ -123,7 +123,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onStart() {
         super.onStart();
         Log.e(TAG, "start onStart~~~");
-        Native.nativeStart();
+        //Native.nativeStart();
     }
     @Override
     protected void onRestart() {
@@ -145,7 +145,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onStop() {
         super.onStop();
         Log.e(TAG, "start onStop~~~");
-        Native.nativeStop();
+        //Native.nativeStop();
     }
 
 

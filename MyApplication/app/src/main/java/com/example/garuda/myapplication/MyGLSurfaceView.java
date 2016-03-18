@@ -171,8 +171,8 @@ class BasicGLSurfaceView extends GLSurfaceView {
         }
 
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-            Surface sur = view_.getHolder().getSurface();
-            Native.init(width, height, sur);
+            //Surface sur = view_.getHolder().getSurface();
+            //Native.init(width, height, sur);
         }
 
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
