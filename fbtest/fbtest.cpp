@@ -4,13 +4,50 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <cutils/properties.h>
+#include <stdint.h>
 #include <linux/fb.h>
-#include <sys/mman.h>
 #include <linux/types.h>
+#include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <hardware/hwcomposer_defs.h>
 #include <hardware/hardware.h>
 #include <hardware/hwcomposer.h>
+#include <ui/Fence.h>
+#include <utils/BitSet.h>
+#include <utils/Condition.h>
+#include <utils/Mutex.h>
+#include <utils/StrongPointer.h>
+#include <utils/Thread.h>
+#include <utils/Timers.h>
+#include <utils/Vector.h>
+#include <cutils/properties.h>
+#include <android/configuration.h>
+
+using namespace android;
+
+
+#undef ALOGI
+#undef ALOGW
+#undef ALOGE
+
+
+void MyLog(const char* str, ...)
+{
+    char buffer[256];
+    sprintf(buffer, "%s\n", str);
+    va_list argptr;
+    va_start(argptr, str);
+
+    vprintf(buffer, argptr);
+    va_end(argptr);
+}
+
+#define ALOGI MyLog
+#define ALOGW MyLog
+#define ALOGE MyLog
+
+
 
 
 inline size_t roundUpToPageSize(size_t x) {
@@ -169,8 +206,6 @@ static bool hwcHasApiVersion(const hwc_composer_device_1_t* hwc,
 framebuffer_device_t*           mFbDev;
 struct hwc_composer_device_1*   mHwc;
 
-#define ALOGE printf
-
 
 int loadFbHalModule()
 {
@@ -215,14 +250,204 @@ void loadHwcModule()
 }
 
 
+    struct DisplayData {
+        DisplayData();
+        ~DisplayData();
+        uint32_t width;
+        uint32_t height;
+        uint32_t format;    // pixel format from FB hal, for pre-hwc-1.1
+        float xdpi;
+        float ydpi;
+        nsecs_t refresh;
+        bool connected;
+        bool hasFbComp;
+        bool hasOvComp;
+        size_t capacity;
+        hwc_display_contents_1* list;
+        hwc_layer_1* framebufferTarget;
+        buffer_handle_t fbTargetHandle;
+        sp<Fence> lastRetireFence;  // signals when the last set op retires
+        sp<Fence> lastDisplayFence; // signals when the last set op takes
+                                    // effect on screen
+        buffer_handle_t outbufHandle;
+        sp<Fence> outbufAcquireFence;
+
+        // protected by mEventControlLock
+        int32_t events;
+    };
+DisplayData::DisplayData()
+:   width(0), height(0), format(0),
+    xdpi(0.0f), ydpi(0.0f),
+    refresh(0),
+    connected(false),
+    hasFbComp(false), hasOvComp(false),
+    capacity(0), list(NULL),
+    framebufferTarget(NULL), fbTargetHandle(0),
+    lastRetireFence(Fence::NO_FENCE), lastDisplayFence(Fence::NO_FENCE),
+    outbufHandle(NULL), outbufAcquireFence(Fence::NO_FENCE),
+    events(0)
+{}
+
+DisplayData::~DisplayData() {
+    free(list);
+}
+
+
+
+static float getDefaultDensity(uint32_t height) {
+    if (height >= 1080) return ACONFIGURATION_DENSITY_XHIGH;
+    else                return ACONFIGURATION_DENSITY_TV;
+}
+
+static const uint32_t DISPLAY_ATTRIBUTES[] = {
+    HWC_DISPLAY_VSYNC_PERIOD,
+    HWC_DISPLAY_WIDTH,
+    HWC_DISPLAY_HEIGHT,
+    HWC_DISPLAY_DPI_X,
+    HWC_DISPLAY_DPI_Y,
+    HWC_DISPLAY_NO_ATTRIBUTE,
+};
+
+#define NUM_DISPLAY_ATTRIBUTES (sizeof(DISPLAY_ATTRIBUTES) / sizeof(DISPLAY_ATTRIBUTES)[0])
+
+DisplayData       mDisplayData[2];
+
+int queryDisplayProperties(int disp) {
+
+    // use zero as default value for unspecified attributes
+    int32_t values[NUM_DISPLAY_ATTRIBUTES - 1];
+    memset(values, 0, sizeof(values));
+
+    uint32_t config;
+    size_t numConfigs = 1;
+    status_t err = mHwc->getDisplayConfigs(mHwc, disp, &config, &numConfigs);
+    if (err != NO_ERROR) {
+        // this can happen if an unpluggable display is not connected
+        mDisplayData[disp].connected = false;
+        return err;
+    }
+
+    err = mHwc->getDisplayAttributes(mHwc, disp, config, DISPLAY_ATTRIBUTES, values);
+    if (err != NO_ERROR) {
+        // we can't get this display's info. turn it off.
+        mDisplayData[disp].connected = false;
+        return err;
+    }
+
+    int32_t w = 0, h = 0;
+    for (size_t i = 0; i < NUM_DISPLAY_ATTRIBUTES - 1; i++) {
+        switch (DISPLAY_ATTRIBUTES[i]) {
+        case HWC_DISPLAY_VSYNC_PERIOD:
+            mDisplayData[disp].refresh = nsecs_t(values[i]);
+            break;
+        case HWC_DISPLAY_WIDTH:
+            mDisplayData[disp].width = values[i];
+            break;
+        case HWC_DISPLAY_HEIGHT:
+            mDisplayData[disp].height = values[i];
+            break;
+        case HWC_DISPLAY_DPI_X:
+            mDisplayData[disp].xdpi = values[i] / 1000.0f;
+            break;
+        case HWC_DISPLAY_DPI_Y:
+            mDisplayData[disp].ydpi = values[i] / 1000.0f;
+            break;
+        default:
+            ALOG_ASSERT(false, "unknown display attribute[%d] %#x",
+                    i, DISPLAY_ATTRIBUTES[i]);
+            break;
+        }
+    }
+
+    // FIXME: what should we set the format to?
+    mDisplayData[disp].format = HAL_PIXEL_FORMAT_RGBA_8888;
+    mDisplayData[disp].connected = true;
+    if (mDisplayData[disp].xdpi == 0.0f || mDisplayData[disp].ydpi == 0.0f) {
+        float dpi = getDefaultDensity(h);
+        mDisplayData[disp].xdpi = dpi;
+        mDisplayData[disp].ydpi = dpi;
+    }
+    return NO_ERROR;
+}
+
+
+
+status_t createWorkList(int32_t id, size_t numLayers) {
+    ALOGI("createWorkList");
+
+    if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
+        ALOGI("HWC_DEVICE_API_VERSION_1_1 true");
+    }
+
+    if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
+        ALOGI("HWC_DEVICE_API_VERSION_1_3 true");
+    }
+
+    if (mHwc) {
+        DisplayData& disp(mDisplayData[id]);
+        if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
+            // we need space for the HWC_FRAMEBUFFER_TARGET
+            numLayers++;
+        }
+        if (disp.capacity < numLayers || disp.list == NULL) {
+            size_t size = sizeof(hwc_display_contents_1_t)
+                    + numLayers * sizeof(hwc_layer_1_t);
+            free(disp.list);
+            disp.list = (hwc_display_contents_1_t*)malloc(size);
+            disp.capacity = numLayers;
+        }
+        if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
+            disp.framebufferTarget = &disp.list->hwLayers[numLayers - 1];
+            memset(disp.framebufferTarget, 0, sizeof(hwc_layer_1_t));
+            const hwc_rect_t r = { 0, 0, (int) disp.width, (int) disp.height };
+            disp.framebufferTarget->compositionType = HWC_FRAMEBUFFER_TARGET;
+            disp.framebufferTarget->hints = 0;
+            disp.framebufferTarget->flags = 0;
+            disp.framebufferTarget->handle = disp.fbTargetHandle;
+            disp.framebufferTarget->transform = 0;
+            disp.framebufferTarget->blending = HWC_BLENDING_PREMULT;
+            if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
+                disp.framebufferTarget->sourceCropf.left = 0;
+                disp.framebufferTarget->sourceCropf.top = 0;
+                disp.framebufferTarget->sourceCropf.right = disp.width;
+                disp.framebufferTarget->sourceCropf.bottom = disp.height;
+            } else {
+                disp.framebufferTarget->sourceCrop = r;
+            }
+            disp.framebufferTarget->displayFrame = r;
+            disp.framebufferTarget->visibleRegionScreen.numRects = 1;
+            disp.framebufferTarget->visibleRegionScreen.rects =
+                &disp.framebufferTarget->displayFrame;
+            disp.framebufferTarget->acquireFenceFd = -1;
+            disp.framebufferTarget->releaseFenceFd = -1;
+            disp.framebufferTarget->planeAlpha = 0xFF;
+        }
+        disp.list->retireFenceFd = -1;
+        disp.list->flags = HWC_GEOMETRY_CHANGED;
+        disp.list->numHwLayers = numLayers;
+    }
+    return NO_ERROR;
+}
+
+
 
 int main(int argc, char **argv) {
-    printf("fbtest !! \n");
+    ALOGI("fbtest !!!!!!");
 
     loadFbHalModule();
     loadHwcModule();
 
-    printf("%p %p\n", mFbDev, mHwc);
+    ALOGI("mFbDev %p mHwc %p", mFbDev, mHwc);
+
+    if (queryDisplayProperties(0) != NO_ERROR) {
+        ALOGE("queryDisplayProperties 0 failed!");
+    }
+    ALOGI("display 0 info:");
+    ALOGI("width %d height %d", mDisplayData[0].width, mDisplayData[0].height);
+
+    createWorkList(0, 1);
+
+
 
 //    info.activate = FB_ACTIVATE_VBL;
 //    info.yoffset = 0;
