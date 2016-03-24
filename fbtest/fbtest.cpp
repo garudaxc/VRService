@@ -23,6 +23,10 @@
 #include <utils/Vector.h>
 #include <cutils/properties.h>
 #include <android/configuration.h>
+#include <gui/GraphicBufferAlloc.h>
+#include <ui/GraphicBuffer.h>
+#include <GLES2/gl2.h>
+#include <EGL/egl.h>
 
 using namespace android;
 
@@ -129,6 +133,10 @@ struct mdp_display_commit {
 
 #define MSMFB_IOCTL_MAGIC 'm'
 #define MSMFB_DISPLAY_COMMIT _IOW(MSMFB_IOCTL_MAGIC, 164, struct mdp_display_commit)
+
+#define MAX_HWC_DISPLAYS 2
+size_t mNumDisplays;
+struct hwc_display_contents_1*  mLists[MAX_HWC_DISPLAYS];
 
 
 int FramebufferTest()
@@ -431,8 +439,164 @@ status_t createWorkList(int32_t id, size_t numLayers) {
 
 
 
+GraphicBufferAlloc* alloc_ = NULL;
+sp<GraphicBuffer> framebuffer_;
+
+void CreateFrameBuffer()
+{
+    alloc_ = new GraphicBufferAlloc();
+
+    DisplayData disp(mDisplayData[0]);
+    status_t err = NO_ERROR;
+
+    int usage = GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER;
+
+    framebuffer_ = alloc_->createGraphicBuffer(disp.width, disp.height, disp.format, usage, &err);
+    if (err != NO_ERROR) {
+        ALOGE("Create frame buffer failed! err : %d", err);
+        return;
+    } else {
+        ALOGI("create frame buffer succeeded! handle %p", framebuffer_->handle);
+    }
+
+    void* addr = NULL;
+//    GRALLOC_USAGE_SW_WRITE_MASK
+    err = framebuffer_->lock(0, &addr);
+    if (err =! NO_ERROR) {
+        ALOGI("lock failed! %d", err);
+        return;
+    }
+
+    ALOGI("addr %p", addr);
+    memset(addr, 0, 1920 * 1080 * 4);
+    framebuffer_->unlock();
+}
+
+
+status_t setFramebufferTarget(int32_t id, const sp<GraphicBuffer>& buf) {
+
+    DisplayData& disp(mDisplayData[id]);
+    if (!disp.framebufferTarget) {
+        // this should never happen, but apparently eglCreateWindowSurface()
+        // triggers a Surface::queueBuffer()  on some
+        // devices (!?) -- log and ignore.
+        ALOGE("HWComposer: framebufferTarget is null");
+        return NO_ERROR;
+    }
+
+    int acquireFenceFd = -1;
+//    if (acquireFence->isValid()) {
+//        acquireFenceFd = acquireFence->dup();
+//    }
+
+    // ALOGD("fbPost: handle=%p, fence=%d", buf->handle, acquireFenceFd);
+    disp.fbTargetHandle = buf->handle;
+    disp.framebufferTarget->handle = disp.fbTargetHandle;
+    disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
+    return NO_ERROR;
+}
+
+
+status_t prepare() {
+    for (size_t i=0 ; i<mNumDisplays ; i++) {
+        DisplayData& disp(mDisplayData[i]);
+        if (disp.framebufferTarget) {
+            // make sure to reset the type to HWC_FRAMEBUFFER_TARGET
+            // DO NOT reset the handle field to NULL, because it's possible
+            // that we have nothing to redraw (eg: eglSwapBuffers() not called)
+            // in which case, we should continue to use the same buffer.
+            LOG_FATAL_IF(disp.list == NULL);
+            disp.framebufferTarget->compositionType = HWC_FRAMEBUFFER_TARGET;
+        }
+        if (!disp.connected && disp.list != NULL) {
+            ALOGW("WARNING: disp %d: connected, non-null list, layers=%d",
+                  i, disp.list->numHwLayers);
+        }
+        mLists[i] = disp.list;
+        if (mLists[i]) {
+            if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
+                mLists[i]->outbuf = disp.outbufHandle;
+                mLists[i]->outbufAcquireFenceFd = -1;
+            } else if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
+                // garbage data to catch improper use
+                mLists[i]->dpy = (hwc_display_t)0xDEADBEEF;
+                mLists[i]->sur = (hwc_surface_t)0xDEADBEEF;
+            } else {
+                mLists[i]->dpy = EGL_NO_DISPLAY;
+                mLists[i]->sur = EGL_NO_SURFACE;
+            }
+        }
+    }
+
+    int err = mHwc->prepare(mHwc, mNumDisplays, mLists);
+    ALOGE_IF(err, "HWComposer: prepare failed (%s)", strerror(-err));
+
+    if (err == NO_ERROR) {
+        // here we're just making sure that "skip" layers are set
+        // to HWC_FRAMEBUFFER and we're also counting how many layers
+        // we have of each type.
+        //
+        // If there are no window layers, we treat the display has having FB
+        // composition, because SurfaceFlinger will use GLES to draw the
+        // wormhole region.
+        for (size_t i=0 ; i<mNumDisplays ; i++) {
+            DisplayData& disp(mDisplayData[i]);
+            disp.hasFbComp = false;
+            disp.hasOvComp = false;
+            if (disp.list) {
+                for (size_t i=0 ; i<disp.list->numHwLayers ; i++) {
+                    hwc_layer_1_t& l = disp.list->hwLayers[i];
+
+                    //ALOGD("prepare: %d, type=%d, handle=%p",
+                    //        i, l.compositionType, l.handle);
+
+                    if (l.flags & HWC_SKIP_LAYER) {
+                        l.compositionType = HWC_FRAMEBUFFER;
+                    }
+                    if (l.compositionType == HWC_FRAMEBUFFER) {
+                        disp.hasFbComp = true;
+                    }
+                    if (l.compositionType == HWC_OVERLAY) {
+                        disp.hasOvComp = true;
+                    }
+                }
+                if (disp.list->numHwLayers == (disp.framebufferTarget ? 1 : 0)) {
+                    disp.hasFbComp = true;
+                }
+            } else {
+                disp.hasFbComp = true;
+            }
+        }
+    }
+    return (status_t)err;
+}
+
+
+status_t commit() {
+    int err = NO_ERROR;
+    if (mHwc) {
+        err = mHwc->set(mHwc, mNumDisplays, mLists);
+
+        for (size_t i=0 ; i<mNumDisplays ; i++) {
+            DisplayData& disp(mDisplayData[i]);
+            disp.lastDisplayFence = disp.lastRetireFence;
+            disp.lastRetireFence = Fence::NO_FENCE;
+            if (disp.list) {
+                if (disp.list->retireFenceFd != -1) {
+                    disp.lastRetireFence = new Fence(disp.list->retireFenceFd);
+                    disp.list->retireFenceFd = -1;
+                }
+                disp.list->flags &= ~HWC_GEOMETRY_CHANGED;
+            }
+        }
+    }
+    return (status_t)err;
+}
+
+
 int main(int argc, char **argv) {
     ALOGI("fbtest !!!!!!");
+    mNumDisplays = 1;
 
     loadFbHalModule();
     loadHwcModule();
@@ -445,9 +609,20 @@ int main(int argc, char **argv) {
     ALOGI("display 0 info:");
     ALOGI("width %d height %d", mDisplayData[0].width, mDisplayData[0].height);
 
-    createWorkList(0, 1);
+    createWorkList(0, 0);
+    CreateFrameBuffer();
 
 
+
+    setFramebufferTarget(0, framebuffer_);
+
+    if (prepare() != NO_ERROR) {
+        ALOGE("prepare failed!");
+    }
+
+    if (commit() != NO_ERROR) {
+        ALOGE("commit failed!");
+    }
 
 //    info.activate = FB_ACTIVATE_VBL;
 //    info.yoffset = 0;
