@@ -433,6 +433,7 @@ status_t createWorkList(int32_t id, size_t numLayers) {
         disp.list->retireFenceFd = -1;
         disp.list->flags = HWC_GEOMETRY_CHANGED;
         disp.list->numHwLayers = numLayers;
+        ALOGI("create work list with %d layers", numLayers);
     }
     return NO_ERROR;
 }
@@ -441,6 +442,7 @@ status_t createWorkList(int32_t id, size_t numLayers) {
 
 GraphicBufferAlloc* alloc_ = NULL;
 sp<GraphicBuffer> framebuffer_;
+sp<GraphicBuffer> renderBuffer_;
 
 void CreateFrameBuffer()
 {
@@ -459,17 +461,26 @@ void CreateFrameBuffer()
         ALOGI("create frame buffer succeeded! handle %p", framebuffer_->handle);
     }
 
-    void* addr = NULL;
-//    GRALLOC_USAGE_SW_WRITE_MASK
-    err = framebuffer_->lock(0, &addr);
-    if (err =! NO_ERROR) {
-        ALOGI("lock failed! %d", err);
+//    void* addr = NULL;
+////    GRALLOC_USAGE_SW_WRITE_MASK
+//    err = framebuffer_->lock(0, &addr);
+//    if (err =! NO_ERROR) {
+//        ALOGI("lock failed! %d", err);
+//    }
+
+//    ALOGI("addr %p", addr);
+//    memset(addr, 0, 1920 * 1080 * 4);
+//    framebuffer_->unlock();
+
+
+    renderBuffer_ = alloc_->createGraphicBuffer(disp.width, disp.height, disp.format, 0x202, &err);
+    if (err != NO_ERROR) {
+        ALOGE("Create render buffer failed! err : %d", err);
         return;
+    } else {
+        ALOGI("create render buffer succeeded! handle %p", framebuffer_->handle);
     }
 
-    ALOGI("addr %p", addr);
-    memset(addr, 0, 1920 * 1080 * 4);
-    framebuffer_->unlock();
 }
 
 
@@ -493,8 +504,35 @@ status_t setFramebufferTarget(int32_t id, const sp<GraphicBuffer>& buf) {
     disp.fbTargetHandle = buf->handle;
     disp.framebufferTarget->handle = disp.fbTargetHandle;
     disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
+
+
+    hwc_layer_1_t* l = &disp.list->hwLayers[0];
+    memset(l, 0, sizeof(hwc_layer_1_t));
+    const hwc_rect_t r = { 0, 0, (int) disp.width, (int) disp.height };
+    l->compositionType = HWC_OVERLAY;
+    l->hints = 2;
+    l->flags = 0;
+    l->handle = renderBuffer_->handle;
+    l->transform = 0;
+    l->blending = HWC_BLENDING_NONE;
+    if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
+        l->sourceCropf.left = 0;
+        l->sourceCropf.top = 0;
+        l->sourceCropf.right = disp.width;
+        l->sourceCropf.bottom = disp.height;
+    } else {
+        l->sourceCrop = r;
+    }
+    l->displayFrame = r;
+    l->visibleRegionScreen.numRects = 1;
+    l->visibleRegionScreen.rects = &l->displayFrame;
+    l->acquireFenceFd = -1;
+    l->releaseFenceFd = -1;
+    l->planeAlpha = 0xFF;
+
     return NO_ERROR;
 }
+
 
 
 status_t prepare() {
@@ -609,10 +647,8 @@ int main(int argc, char **argv) {
     ALOGI("display 0 info:");
     ALOGI("width %d height %d", mDisplayData[0].width, mDisplayData[0].height);
 
-    createWorkList(0, 0);
+    createWorkList(0, 1);
     CreateFrameBuffer();
-
-
 
     setFramebufferTarget(0, framebuffer_);
 
