@@ -33,12 +33,35 @@
 #include <gui/Surface.h>
 
 #include <private/gui/ComposerService.h>
-
-int InitDirectRender();
-void RenderFrame();
-android_native_buffer_t* GetRenderBuffer();
+#include <hardware/hardware.h>
+#include <hardware/gralloc.h>
+//#include <ui/FramebufferNativeWindow.h>
+//#include <ui/ANativeObjectBase.h>
 
 namespace android {
+
+
+
+    class SurfaceNativeBuffer
+            : public ANativeObjectBase<
+                    ANativeWindowBuffer,
+                    SurfaceNativeBuffer,
+                    LightRefBase<SurfaceNativeBuffer> >
+    {
+    public:
+        SurfaceNativeBuffer(int w, int h, int f, int u) : BASE() {
+            ANativeWindowBuffer::width  = w;
+            ANativeWindowBuffer::height = h;
+            ANativeWindowBuffer::format = f;
+            ANativeWindowBuffer::usage  = u;
+        }
+    private:
+        friend class LightRefBase<SurfaceNativeBuffer>;
+        ~SurfaceNativeBuffer() { }; // this class cannot be overloaded
+    };
+
+
+
 
 Surface::Surface(
         const sp<IGraphicBufferProducer>& bufferProducer,
@@ -78,7 +101,9 @@ Surface::Surface(
     mConnectedToCpu = false;
     mProducerControlledByApp = controlledByApp;
     mSwapIntervalZero = false;
-    mEnableFrontBuffer = false;
+    fbDev = NULL;
+    grDev = NULL;
+    mFrontBufferOnly = false;
 }
 
 Surface::~Surface() {
@@ -182,26 +207,26 @@ int Surface::setSwapInterval(int interval) {
 
 int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
     ATRACE_CALL();
-    ALOGV("Surface::dequeueBuffer");
+    //ALOGI("Surface::dequeueBuffer %p %d %p", this, mFrontBufferOnly ? 1 : 0, mFrontBuffer.get());
     Mutex::Autolock lock(mMutex);
+    if (mFrontBufferOnly && mFrontBuffer.get() != NULL)  {
+        *buffer = mFrontBuffer.get();
+        *fenceFd = -1;
+
+        ALOGI("Surface::dequeueBuffer use front buffer %p", this);
+        return OK;
+    }
+
     int buf = -1;
     int reqW = mReqWidth ? mReqWidth : mUserWidth;
     int reqH = mReqHeight ? mReqHeight : mUserHeight;
     sp<Fence> fence;
-
-    if (mEnableFrontBuffer) {
-        *buffer = GetRenderBuffer();
-        *fenceFd = -1;
-        ALOGI("Surface::dequeueBuffer front buffer");
-        return NO_ERROR;
-    }
-
     status_t result = mGraphicBufferProducer->dequeueBuffer(&buf, &fence, mSwapIntervalZero,
             reqW, reqH, mReqFormat, mReqUsage);
     if (result < 0) {
-        ALOGI("dequeueBuffer: IGraphicBufferProducer::dequeueBuffer(%d, %d, %d, %d)"
-                      "failed: %d", mReqWidth, mReqHeight, mReqFormat, mReqUsage,
-              result);
+        ALOGV("dequeueBuffer: IGraphicBufferProducer::dequeueBuffer(%d, %d, %d, %d)"
+             "failed: %d", mReqWidth, mReqHeight, mReqFormat, mReqUsage,
+             result);
         return result;
     }
     sp<GraphicBuffer>& gbuf(mSlots[buf].buffer);
@@ -272,8 +297,19 @@ int Surface::lockBuffer_DEPRECATED(android_native_buffer_t* buffer) {
 
 int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     ATRACE_CALL();
-    ALOGV("Surface::queueBuffer");
+    //ALOGI("Surface::queueBuffer %p %d %p", this, mFrontBufferOnly ? 1 : 0, mFrontBuffer.get());
     Mutex::Autolock lock(mMutex);
+
+    if (mFrontBufferOnly && mFrontBuffer.get() == buffer) {
+        ALOGI("Surface::queueBuffer use front buffer %p", this);
+
+        framebuffer_device_t* fb = fbDev;
+        buffer_handle_t handle = mFrontBuffer->handle;
+        int res = fb->post(fb, handle);
+
+        return OK;
+    }
+
     int64_t timestamp;
     bool isAutoTimestamp = false;
     if (mTimestamp == NATIVE_WINDOW_TIMESTAMP_AUTO) {
@@ -284,18 +320,10 @@ int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     } else {
         timestamp = mTimestamp;
     }
-
-    if (mEnableFrontBuffer && buffer == GetRenderBuffer()) {
-        RenderFrame();
-        ALOGI("Surface::queueBuffer front buffer");
-        return NO_ERROR;
-    }
-
     int i = getSlotFromBufferLocked(buffer);
     if (i < 0) {
         return i;
     }
-
 
     // Make sure the crop rectangle is entirely inside the buffer.
     Rect crop;
@@ -740,6 +768,7 @@ static status_t copyBlt(
 status_t Surface::lock(
         ANativeWindow_Buffer* outBuffer, ARect* inOutDirtyBounds)
 {
+    ALOGI("Surface::lock %p", this);
     if (mLockedBuffer != 0) {
         ALOGE("Surface::lock failed, already locked");
         return INVALID_OPERATION;
@@ -860,15 +889,69 @@ status_t Surface::unlockAndPost()
 }
 
 
-void Surface::SetFrontBufferOnly(bool bEnable)
+void Surface::OpenFrameBufferDevice()
 {
-    if (bEnable) {
-        if (InitDirectRender() == NO_ERROR) {
-            mEnableFrontBuffer = true;
-            ALOGI("InitDirectRender succeeded!");
+    ALOGI("Surface::OpenFrameBufferDevice");
+    hw_module_t const* module;
+    if (hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module) == 0) {
+        int stride;
+        int err;
+        int i;
+        int mNumBuffers = 1;
+        err = framebuffer_open(module, &fbDev);
+        ALOGE_IF(err, "couldn't open framebuffer HAL (%s)", strerror(-err));
+
+        err = gralloc_open(module, &grDev);
+        ALOGE_IF(err, "couldn't open gralloc HAL (%s)", strerror(-err));
+
+        // bail out if we can't initialize the modules
+        if (!fbDev || !grDev)
+            return;
+
+        /*
+         * This does not actually change the framebuffer format. It merely
+         * fakes this format to surfaceflinger so that when it creates
+         * framebuffer surfaces it will use this format. It's really a giant
+         * HACK to allow interworking with buggy gralloc+GPU driver
+         * implementations. You should *NEVER* need to set this for shipping
+         * devices.
+         */
+#ifdef FRAMEBUFFER_FORCE_FORMAT
+        *((uint32_t *)&fbDev->format) = FRAMEBUFFER_FORCE_FORMAT;
+#endif
+
+        for (i = 0; i < mNumBuffers; i++) {
+            mFrontBuffer = new SurfaceNativeBuffer(
+                    fbDev->width, fbDev->height, fbDev->format, GRALLOC_USAGE_HW_FB);
+        }
+
+        for (i = 0; i < mNumBuffers; i++) {
+            err = grDev->alloc(grDev,
+                               fbDev->width, fbDev->height, fbDev->format,
+                               GRALLOC_USAGE_HW_FB, &mFrontBuffer->handle, &mFrontBuffer->stride);
+
+            ALOGE_IF(err, "fb buffer %d allocation failed w=%d, h=%d, err=%s",
+                     i, fbDev->width, fbDev->height, strerror(-err));
         }
     }
+    ALOGI("Surface::OpenFrameBufferDevice done");
 }
 
+
+void Surface::SetFrontBufferOnly(bool bEnable)
+{
+    if (bEnable){
+        if (fbDev == NULL) {
+            OpenFrameBufferDevice();
+            if (fbDev == NULL || grDev == NULL) {
+                ALOGE("surfece openFrontBuffer faild!");
+                return;
+            }
+        }
+    }
+    mFrontBufferOnly = bEnable;
+
+    ALOGI("Surface::SetFrontBufferOnly %p", this);
+}
 
 }; // namespace android
