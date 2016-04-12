@@ -444,7 +444,7 @@ GraphicBufferAlloc* alloc_ = NULL;
 sp<GraphicBuffer> framebuffer_;
 sp<GraphicBuffer> renderBuffer_;
 
-void CreateFrameBuffer()
+void CreateFrameBuffer(bool craeteRenderBuffer)
 {
     alloc_ = new GraphicBufferAlloc();
 
@@ -472,15 +472,15 @@ void CreateFrameBuffer()
 //    memset(addr, 0, 1920 * 1080 * 4);
 //    framebuffer_->unlock();
 
-
-    renderBuffer_ = alloc_->createGraphicBuffer(disp.width, disp.height, disp.format, 0x202, &err);
-    if (err != NO_ERROR) {
-        ALOGE("Create render buffer failed! err : %d", err);
-        return;
-    } else {
-        ALOGI("create render buffer succeeded! handle %p", framebuffer_->handle);
+    if (craeteRenderBuffer) {
+        renderBuffer_ = alloc_->createGraphicBuffer(disp.width, disp.height, disp.format, 0x202, &err);
+        if (err != NO_ERROR) {
+            ALOGE("Create render buffer failed! err : %d", err);
+            return;
+        } else {
+            ALOGI("create render buffer succeeded! handle %p", framebuffer_->handle);
+        }
     }
-
 }
 
 
@@ -506,29 +506,32 @@ status_t setFramebufferTarget(int32_t id, const sp<GraphicBuffer>& buf) {
     disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
 
 
-    hwc_layer_1_t* l = &disp.list->hwLayers[0];
-    memset(l, 0, sizeof(hwc_layer_1_t));
-    const hwc_rect_t r = { 0, 0, (int) disp.width, (int) disp.height };
-    l->compositionType = HWC_OVERLAY;
-    l->hints = 2;
-    l->flags = 0;
-    l->handle = renderBuffer_->handle;
-    l->transform = 0;
-    l->blending = HWC_BLENDING_NONE;
-    if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
-        l->sourceCropf.left = 0;
-        l->sourceCropf.top = 0;
-        l->sourceCropf.right = disp.width;
-        l->sourceCropf.bottom = disp.height;
-    } else {
-        l->sourceCrop = r;
+    if (renderBuffer_.get() != NULL) {
+
+        hwc_layer_1_t* l = &disp.list->hwLayers[0];
+        memset(l, 0, sizeof(hwc_layer_1_t));
+        const hwc_rect_t r = { 0, 0, (int) disp.width, (int) disp.height };
+        l->compositionType = HWC_OVERLAY;
+        l->hints = 2;
+        l->flags = 0;
+        l->handle = renderBuffer_->handle;
+        l->transform = 0;
+        l->blending = HWC_BLENDING_NONE;
+        if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_3)) {
+            l->sourceCropf.left = 0;
+            l->sourceCropf.top = 0;
+            l->sourceCropf.right = disp.width;
+            l->sourceCropf.bottom = disp.height;
+        } else {
+            l->sourceCrop = r;
+        }
+        l->displayFrame = r;
+        l->visibleRegionScreen.numRects = 1;
+        l->visibleRegionScreen.rects = &l->displayFrame;
+        l->acquireFenceFd = -1;
+        l->releaseFenceFd = -1;
+        l->planeAlpha = 0xFF;
     }
-    l->displayFrame = r;
-    l->visibleRegionScreen.numRects = 1;
-    l->visibleRegionScreen.rects = &l->displayFrame;
-    l->acquireFenceFd = -1;
-    l->releaseFenceFd = -1;
-    l->planeAlpha = 0xFF;
 
     return NO_ERROR;
 }
@@ -647,8 +650,8 @@ int main(int argc, char **argv) {
     ALOGI("display 0 info:");
     ALOGI("width %d height %d", mDisplayData[0].width, mDisplayData[0].height);
 
-    createWorkList(0, 1);
-    CreateFrameBuffer();
+    createWorkList(0, 0);
+    CreateFrameBuffer(false);
 
     setFramebufferTarget(0, framebuffer_);
 
@@ -660,6 +663,7 @@ int main(int argc, char **argv) {
         ALOGE("commit failed!");
     }
 
+    ALOGE("main done!");
 //    info.activate = FB_ACTIVATE_VBL;
 //    info.yoffset = 0;
 //    if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1) {
