@@ -22,11 +22,13 @@
 #include <utils/Timers.h>
 #include <utils/Vector.h>
 #include <cutils/properties.h>
+#include <cutils/log.h>
 #include <android/configuration.h>
 #include <gui/GraphicBufferAlloc.h>
 #include <ui/GraphicBuffer.h>
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
+
 
 using namespace android;
 
@@ -178,7 +180,7 @@ int FramebufferTest()
 
     log_vscreeninfo(&info);
 
-    int fbSize = 1920 * 1080 * 4 + 1920 * 200 * 4;
+    int fbSize = 1920 * 1080 * 4 + 1920 * 1000 * 4;
     fbSize = roundUpToPageSize(fbSize);
     void* vaddr = mmap(0, fbSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (vaddr == NULL) {
@@ -188,6 +190,16 @@ int FramebufferTest()
 
     memset(vaddr, 0, fbSize);
     printf("map addr %p\n", vaddr);
+
+    info.activate = FB_ACTIVATE_VBL;
+    info.yoffset = 0;
+    if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1) {
+        printf("%s: FBIOPUT_VSCREENINFO for primary failed, str: %s\n",
+              __FUNCTION__, strerror(errno));
+        return -errno;
+    }
+
+    printf("FBIOPUT_VSCREENINFO\n");
 
     return 0;
 }
@@ -408,7 +420,7 @@ status_t createWorkList(int32_t id, size_t numLayers) {
             disp.framebufferTarget = &disp.list->hwLayers[numLayers - 1];
             memset(disp.framebufferTarget, 0, sizeof(hwc_layer_1_t));
             const hwc_rect_t r = { 0, 0, (int) disp.width, (int) disp.height };
-            disp.framebufferTarget->compositionType = HWC_FRAMEBUFFER_TARGET;
+            disp.framebufferTarget->compositionType = HWC_OVERLAY;
             disp.framebufferTarget->hints = 0;
             disp.framebufferTarget->flags = 0;
             disp.framebufferTarget->handle = disp.fbTargetHandle;
@@ -461,12 +473,20 @@ void CreateFrameBuffer(bool craeteRenderBuffer)
         ALOGI("create frame buffer succeeded! handle %p", framebuffer_->handle);
     }
 
-//    void* addr = NULL;
-////    GRALLOC_USAGE_SW_WRITE_MASK
-//    err = framebuffer_->lock(0, &addr);
-//    if (err =! NO_ERROR) {
-//        ALOGI("lock failed! %d", err);
-//    }
+    void* addr = NULL;
+//    GRALLOC_USAGE_SW_WRITE_MASK
+    ALOGI("lock frame buffer!");
+    err = framebuffer_->lock(GRALLOC_USAGE_SW_READ_MASK | GRALLOC_USAGE_SW_WRITE_MASK, &addr);
+    if (err =! NO_ERROR) {
+        ALOGI("lock failed! %d %p", err, addr);
+    } else {
+        framebuffer_->unlock();
+    }
+    if (addr != NULL) {
+        memset(addr, 0x8f, 1920 * 1080 * 4);
+        framebuffer_->unlock();
+        ALOGI("memeset framebuffer!");
+    }
 
 //    ALOGI("addr %p", addr);
 //    memset(addr, 0, 1920 * 1080 * 4);
@@ -635,8 +655,9 @@ status_t commit() {
 }
 
 
-int main(int argc, char **argv) {
-    ALOGI("fbtest !!!!!!");
+void HWCTest()
+{
+    ALOGI("HWCTest !!!!!!");
     mNumDisplays = 1;
 
     loadFbHalModule();
@@ -650,8 +671,8 @@ int main(int argc, char **argv) {
     ALOGI("display 0 info:");
     ALOGI("width %d height %d", mDisplayData[0].width, mDisplayData[0].height);
 
-    createWorkList(0, 0);
-    CreateFrameBuffer(false);
+    createWorkList(0, 1);
+    CreateFrameBuffer(true);
 
     setFramebufferTarget(0, framebuffer_);
 
@@ -663,7 +684,18 @@ int main(int argc, char **argv) {
         ALOGE("commit failed!");
     }
 
-    ALOGE("main done!");
+    ALOGI("sleep !");
+    sleep(5);
+
+    ALOGI("main done!");
+}
+
+
+int main(int argc, char **argv) {
+
+    //FramebufferTest();
+    HWCTest();
+
 //    info.activate = FB_ACTIVATE_VBL;
 //    info.yoffset = 0;
 //    if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1) {
